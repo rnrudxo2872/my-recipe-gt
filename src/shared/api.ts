@@ -2,7 +2,7 @@
 
 export type Role = "admin" | "friend" | "member";
 export type UserStatus = "active" | "limited" | "blocked";
-export type QuotaKind = "ai" | "import" | "video" | "upload";
+export type QuotaKind = "ai" | "import" | "video" | "upload" | "save";
 
 export interface Limits {
   /** 하루 AI 기능(대체 재료, 맛 조정, 추천, 글 정리) 횟수 */
@@ -13,6 +13,8 @@ export interface Limits {
   video: number;
   /** 하루 사진 올리기 횟수 */
   upload: number;
+  /** 하루 레시피 저장·수정 횟수 (DB 용량 보호) */
+  save: number;
   /** 저장할 수 있는 레시피 수 */
   recipes: number;
   /** 1분에 보낼 수 있는 AI 요청 수 */

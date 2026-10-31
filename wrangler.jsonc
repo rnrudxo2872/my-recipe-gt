@@ -16,9 +16,11 @@
       "migrations_dir": "migrations"
     }
   ],
+  // 사진 저장소. 카드 등록 없이 1GB 무료. `npm run setup`이 실제 ID로 바꿔 줍니다.
+  "kv_namespaces": [{ "binding": "IMAGES_KV", "id": "00000000000000000000000000000000" }],
   // Workers AI: 키 없이 하루 1만 뉴런까지 무료인 예비 AI 엔진
   "ai": { "binding": "AI" },
-  // R2(사진 저장소)를 쓰려면 아래 주석을 풀고 버킷을 만드세요. 없으면 사진은 D1에 저장됩니다.
+  // R2(10GB 무료, 활성화할 때 카드 등록 필요)를 쓰려면 아래 주석을 풀고 버킷을 만드세요. 있으면 KV 대신 R2에 저장합니다.
   // "r2_buckets": [{ "binding": "IMAGES", "bucket_name": "recipegt-images" }],
   "vars": {
     "APP_NAME": "레시피GT",

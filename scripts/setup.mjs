@@ -72,6 +72,32 @@ if (config.includes(PLACEHOLDER)) {
   console.log("wrangler.jsonc에 이미 데이터베이스 ID가 있어요.");
 }
 
+// 2-1. 사진 저장소(KV)
+step("사진 저장소(KV) 준비");
+const KV_PLACEHOLDER = '"id": "00000000000000000000000000000000"';
+const KV_TITLE = "recipegt-images";
+config = readFileSync("wrangler.jsonc", "utf8");
+if (config.includes(KV_PLACEHOLDER)) {
+  const findKv = () => {
+    const list = JSON.parse(sh("npx wrangler kv namespace list", { capture: true }));
+    return list.find((n) => n.title === KV_TITLE || n.title.endsWith(`-${KV_TITLE}`))?.id ?? null;
+  };
+  let id = findKv();
+  if (!id) {
+    sh(`npx wrangler kv namespace create ${KV_TITLE}`, { capture: true });
+    id = findKv();
+  }
+  if (!id) {
+    console.log("사진 저장소를 만들지 못했어요. Cloudflare 대시보드에서 Workers KV를 확인해 주세요.");
+    process.exit(1);
+  }
+  config = config.replace(KV_PLACEHOLDER, `"id": "${id}"`);
+  writeFileSync("wrangler.jsonc", config);
+  console.log(`wrangler.jsonc에 사진 저장소 ID를 적었어요: ${id}`);
+} else {
+  console.log("wrangler.jsonc에 이미 사진 저장소 ID가 있어요.");
+}
+
 // 3. 빌드와 표 만들기, 배포
 step("빌드");
 sh("npm run build");

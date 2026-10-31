@@ -377,6 +377,7 @@ const LIMIT_FIELDS: { key: keyof Limits; label: string }[] = [
   { key: "ai", label: "AI 기능/일" },
   { key: "video", label: "영상 분석/일" },
   { key: "upload", label: "사진 올리기/일" },
+  { key: "save", label: "저장·수정/일" },
   { key: "burstPerMin", label: "AI 요청/분" },
   { key: "videoMaxMinutes", label: "영상 최대 길이(분)" },
   { key: "recipes", label: "레시피 저장 수" },

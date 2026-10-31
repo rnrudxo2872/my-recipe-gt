@@ -56,19 +56,20 @@ export interface RecipeVersion {
   createdAt: number;
 }
 
+// 레시피 한 개(버전 한 개)가 DB에서 차지하는 크기를 묶어 두는 상한. 무료 D1은 DB 하나에 500MB까지다.
 const LIMITS = {
   title: 80,
-  description: 600,
-  name: 60,
+  description: 500,
+  name: 40,
   unit: 20,
-  note: 120,
+  note: 80,
   group: 30,
-  step: 800,
-  tip: 400,
+  step: 500,
+  tip: 300,
   tag: 20,
-  ingredients: 80,
-  steps: 60,
-  tips: 20,
+  ingredients: 60,
+  steps: 40,
+  tips: 15,
   tags: 10,
 };
 
@@ -146,6 +147,16 @@ const FRACTIONS: [number, string][] = [
   [2 / 3, "⅔"],
   [0.75, "¾"],
 ];
+
+/** 편집 칸에 넣을 분량. 반올림하지 않아서 저장해도 값이 바뀌지 않는다. 1.5 → '1½', 2.45 → '2.45' */
+export function formatQtyExact(qty: number): string {
+  const whole = Math.floor(qty);
+  const rest = qty - whole;
+  for (const [value, glyph] of FRACTIONS) {
+    if (Math.abs(rest - value) < 0.001) return `${whole > 0 ? whole : ""}${glyph}`;
+  }
+  return String(Math.round(qty * 1000) / 1000);
+}
 
 /** 0.5 → '½', 1.5 → '1½', 0.3333 → '⅓', 2.4 → '2.4' */
 export function formatQty(qty: number): string {
@@ -275,11 +286,25 @@ function stringList(value: unknown, maxItems: number, maxLen: number): string[] 
       text = multiline(item, maxLen);
     }
     // AI가 붙이는 '1.', 'Step 2:' 같은 번호를 뗀다 — 화면에서 번호를 다시 붙인다.
-    text = text.replace(/^(?:step\s*)?\d{1,2}\s*[.)\]:]\s*/i, "").replace(/^\d{1,2}\s*단계\s*[.:)]?\s*/, "").trim();
+    // 뒤에 숫자가 이어지면('2:1 비율', '1.5컵') 번호가 아니라 내용이므로 그대로 둔다.
+    text = text
+      .replace(/^(?:step\s*)?\d{1,2}\s*[.)\]:](?!\d)\s*/i, "")
+      .replace(/^\d{1,2}\s*단계\s*[.:)]?\s*/, "")
+      .trim();
     if (text) out.push(text);
     if (out.length >= maxItems) break;
   }
   return out;
+}
+
+/**
+ * 같은 묶음의 재료를 붙여 놓는다. 묶음 없는 재료를 먼저, 묶음은 처음 나온 순서대로.
+ * 화면과 편집기는 '묶음 이름이 바뀌는 곳'에 제목을 달기 때문에, 섞여 있으면 묶음이 잘못 보인다.
+ */
+function groupTogether(list: Ingredient[]): Ingredient[] {
+  const order: string[] = [""];
+  for (const i of list) if (!order.includes(i.group)) order.push(i.group);
+  return order.flatMap((g) => list.filter((i) => i.group === g));
 }
 
 /** 어떤 형태의 입력이 와도 화면과 DB가 믿을 수 있는 RecipeContent로 정리한다. */
@@ -300,7 +325,7 @@ export function normalizeRecipe(raw: unknown): RecipeContent {
     servings: toPositiveInt(r.servings, 100),
     timeMinutes: toPositiveInt(r.timeMinutes ?? r.time_minutes, 24 * 60),
     difficulty,
-    ingredients,
+    ingredients: groupTogether(ingredients),
     steps: stringList(r.steps, LIMITS.steps, LIMITS.step),
     tips: stringList(r.tips, LIMITS.tips, LIMITS.tip),
     tags: [...new Set(tags)],

@@ -14,7 +14,7 @@ import { looksLikeRecipe } from "../extract/text";
 import { fetchWebPage } from "../extract/web";
 import { fetchYouTubeMeta } from "../extract/youtube";
 import { copyRemoteImage, keyFromImageUrl } from "../images";
-import { addUsage, assertRecipeRoom, canUseVideo, useQuota } from "../quota";
+import { addUsage, assertRecipeRoom, canUseVideo, isUnlimited, useQuota } from "../quota";
 import { createRecipe } from "../recipes-db";
 
 interface ImportInput {
@@ -35,6 +35,16 @@ type Send = (event: ImportEvent) => Promise<void>;
 /** 사용자가 캡션을 붙여넣으면 이어서 진행할 수 있는 상황 */
 class NeedCaption extends Error {}
 
+/** 이번 가져오기에서 AI를 실제로 불렀는지 센다. 불렀으면 실패해도 횟수를 돌려주지 않는다. */
+interface Job {
+  aiCalls: number;
+}
+
+function callAi(job: Job, env: AppEnv, task: Parameters<typeof runAi>[1]) {
+  job.aiCalls++;
+  return runAi(env, task);
+}
+
 function fromAi(data: unknown): RecipeContent | null {
   if (data && typeof data === "object" && (data as Record<string, unknown>).is_recipe === false) return null;
   const content = normalizeRecipe(data);
@@ -51,16 +61,22 @@ interface Extracted {
   method: string;
 }
 
-async function extractYouTube(env: AppEnv, user: SessionUser, source: Extract<DetectedSource, { type: "youtube" }>, input: ImportInput, send: Send): Promise<Extracted> {
+async function extractYouTube(
+  job: Job,
+  env: AppEnv,
+  user: SessionUser,
+  source: Extract<DetectedSource, { type: "youtube" }>,
+  input: ImportInput,
+  send: Send,
+): Promise<Extracted> {
   await stage(send, "meta", "영상 정보를 확인하고 있어요");
-  const isShorts = /\/shorts\//.test(input.link ?? input.text ?? "");
-  const meta = await fetchYouTubeMeta(env, source.id, isShorts);
+  const meta = await fetchYouTubeMeta(env, source.id, source.shorts);
   if (!meta) throw new ApiError(404, "video_unavailable", "영상을 찾을 수 없어요. 공개된 영상인지 확인해 주세요.");
 
   const text = input.caption?.trim() || meta.description;
   if (text && (input.caption || looksLikeRecipe(text))) {
     await stage(send, "description", input.caption ? "붙여넣은 글에서 레시피를 찾고 있어요" : "설명란에서 레시피를 찾고 있어요");
-    const { data } = await runAi(env, extractTextTask({ sourceLabel: input.caption ? "사용자가 붙여넣은 영상 설명" : "유튜브 영상 설명란", title: meta.title, text }));
+    const { data } = await callAi(job, env, extractTextTask({ sourceLabel: input.caption ? "사용자가 붙여넣은 영상 설명" : "유튜브 영상 설명란", title: meta.title, text }));
     const content = fromAi(data);
     if (content) return { content, image: meta.thumbnail, method: "description" };
   }
@@ -68,6 +84,10 @@ async function extractYouTube(env: AppEnv, user: SessionUser, source: Extract<De
   if (!videoReady(env)) throw new NeedCaption("영상을 직접 분석하려면 Gemini 키가 필요해요. 설명란이나 고정 댓글의 레시피를 붙여넣어 주세요.");
   if (!(await canUseVideo(env, user))) {
     throw new NeedCaption("오늘 영상 분석 횟수를 다 썼어요. 설명란이나 고정 댓글의 레시피를 붙여넣으면 바로 정리해 드려요.");
+  }
+  // 길이를 모르면 일반 계정은 분석하지 않는다(긴 영상으로 무료 영상 예산을 다 쓰는 것을 막으려고).
+  if (!meta.durationSec && !isUnlimited(user)) {
+    throw new NeedCaption("영상 길이를 확인하지 못해서 영상 분석은 건너뛰었어요. 설명란이나 자막을 붙여넣어 주세요.");
   }
   const minutes = meta.durationSec ? Math.max(1, Math.ceil(meta.durationSec / 60)) : 10;
   try {
@@ -77,13 +97,20 @@ async function extractYouTube(env: AppEnv, user: SessionUser, source: Extract<De
     throw e;
   }
   await stage(send, "video", minutes > 3 ? "영상을 보면서 레시피를 정리하고 있어요. 1~2분 걸려요" : "영상을 보면서 레시피를 정리하고 있어요");
-  const { data } = await runAi(env, extractVideoTask({ url: source.url, title: meta.title, description: meta.description }));
+  const { data } = await callAi(job, env, extractVideoTask({ url: source.url, title: meta.title, description: meta.description }));
   const content = fromAi(data);
   if (!content) throw new NeedCaption("이 영상에서 레시피를 찾지 못했어요. 요리 영상이 맞다면 설명란이나 자막을 붙여넣어 주세요.");
   return { content, image: meta.thumbnail, method: "video" };
 }
 
-async function extractInstagram(env: AppEnv, user: SessionUser, source: Extract<DetectedSource, { type: "instagram" }>, input: ImportInput, send: Send): Promise<Extracted> {
+async function extractInstagram(
+  job: Job,
+  env: AppEnv,
+  user: SessionUser,
+  source: Extract<DetectedSource, { type: "instagram" }>,
+  input: ImportInput,
+  send: Send,
+): Promise<Extracted> {
   let caption = input.caption?.trim() ?? "";
   let remoteImage: string | null = null;
   if (!caption) {
@@ -96,7 +123,7 @@ async function extractInstagram(env: AppEnv, user: SessionUser, source: Extract<
     throw new NeedCaption("인스타그램 캡션을 가져오지 못했어요. 인스타그램 앱에서 캡션을 복사해 붙여넣어 주세요.");
   }
   await stage(send, "caption", "캡션에서 레시피를 찾고 있어요");
-  const { data } = await runAi(env, extractTextTask({ sourceLabel: "인스타그램 게시물 캡션", text: caption }));
+  const { data } = await callAi(job, env, extractTextTask({ sourceLabel: "인스타그램 게시물 캡션", text: caption }));
   const content = fromAi(data);
   if (!content) throw new NeedCaption("캡션에 레시피가 없어요. 레시피가 댓글이나 영상 속에 있다면 그 내용을 붙여넣어 주세요.");
   let image: string | null = null;
@@ -108,14 +135,14 @@ async function extractInstagram(env: AppEnv, user: SessionUser, source: Extract<
   return { content, image, method: input.caption ? "caption-pasted" : "caption" };
 }
 
-async function extractWeb(env: AppEnv, source: Extract<DetectedSource, { type: "web" }>, input: ImportInput, send: Send): Promise<Extracted> {
+async function extractWeb(job: Job, env: AppEnv, source: Extract<DetectedSource, { type: "web" }>, input: ImportInput, send: Send): Promise<Extracted> {
   await stage(send, "page", "페이지를 읽고 있어요");
   const page = input.caption ? null : await fetchWebPage(source.url);
   if (page?.recipe && isUsableRecipe(page.recipe)) return { content: page.recipe, image: page.image, method: "jsonld" };
   const text = input.caption?.trim() || page?.text || "";
   if (text.length < 50) throw new NeedCaption("페이지 내용을 읽지 못했어요. 레시피 부분을 복사해 붙여넣어 주세요.");
   await stage(send, "text", "글에서 레시피를 정리하고 있어요");
-  const { data } = await runAi(env, extractTextTask({ sourceLabel: "레시피 웹페이지", title: page?.title, text }));
+  const { data } = await callAi(job, env, extractTextTask({ sourceLabel: "레시피 웹페이지", title: page?.title, text }));
   const content = fromAi(data);
   if (!content) throw new NeedCaption("이 페이지에서 레시피를 찾지 못했어요. 레시피 부분만 복사해 붙여넣어 주세요.");
   return { content, image: page?.image ?? null, method: "page" };
@@ -143,7 +170,7 @@ async function runImport(env: AppEnv, user: SessionUser, input: ImportInput, sen
       .bind(source.key)
       .first<{ content: string; image: string | null }>();
     if (cached) {
-      await useQuota(env, user, "import");
+      await useQuota(env, user, "import", { aiCost: false });
       await stage(send, "cache", "이미 정리된 레시피를 불러오고 있어요");
       let image = cached.image;
       const key = keyFromImageUrl(image);
@@ -161,29 +188,31 @@ async function runImport(env: AppEnv, user: SessionUser, input: ImportInput, sen
 
   await useQuota(env, user, "import");
   await stage(send, "start", "가져오기를 시작했어요");
+  const job: Job = { aiCalls: 0 };
   let result: Extracted;
   let sourceType: SourceType;
   try {
     if (!source) {
       await stage(send, "text", "글에서 레시피를 정리하고 있어요");
-      const { data } = await runAi(env, extractTextTask({ sourceLabel: "사용자가 붙여넣은 글", text }));
+      const { data } = await callAi(job, env, extractTextTask({ sourceLabel: "사용자가 붙여넣은 글", text }));
       const content = fromAi(data);
       if (!content) throw new ApiError(422, "not_recipe", "레시피를 찾지 못했어요. 재료와 만드는 법이 들어 있는 글인지 확인해 주세요.");
       result = { content, image: null, method: "text" };
       sourceType = "text";
     } else if (source.type === "youtube") {
-      result = await extractYouTube(env, user, source, input, send);
+      result = await extractYouTube(job, env, user, source, input, send);
       sourceType = "youtube";
     } else if (source.type === "instagram") {
-      result = await extractInstagram(env, user, source, input, send);
+      result = await extractInstagram(job, env, user, source, input, send);
       sourceType = "instagram";
     } else {
-      result = await extractWeb(env, source, input, send);
+      result = await extractWeb(job, env, source, input, send);
       sourceType = "web";
     }
   } catch (e) {
-    // 레시피를 못 만들었으면 가져오기 횟수는 돌려준다.
-    await addUsage(env.DB, user.id, "import", -1).catch(() => {});
+    // AI를 부르기 전에 멈췄으면(캡션을 못 읽음 등) 가져오기 횟수를 돌려준다.
+    // AI를 이미 불렀다면 돌려주지 않는다 — 돌려주면 레시피가 아닌 글로 무료 AI를 끝없이 쓸 수 있다.
+    if (job.aiCalls === 0) await addUsage(env.DB, user.id, "import", -1).catch(() => {});
     throw e;
   }
 
@@ -194,9 +223,11 @@ async function runImport(env: AppEnv, user: SessionUser, input: ImportInput, sen
     sourceUrl: source?.url ?? null,
     sourceKey: source?.key ?? null,
   });
-  if (source) {
+  // 사용자가 붙여넣은 글로 만든 결과는 캐시에 넣지 않는다. 남이 아무 글이나 붙여 인기 링크의 결과를 바꿔치기할 수 있어서다.
+  // 이미 있는 캐시도 덮어쓰지 않는다.
+  if (source && !input.caption) {
     await env.DB.prepare(
-      "INSERT OR REPLACE INTO extraction_cache (source_key, content, image, source_url, method, created_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+      "INSERT OR IGNORE INTO extraction_cache (source_key, content, image, source_url, method, created_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
     )
       .bind(source.key, JSON.stringify(result.content), result.image, source.url, result.method, Date.now())
       .run();

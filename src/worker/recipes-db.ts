@@ -22,7 +22,8 @@ export interface RecipeRow {
   updated_at: number;
 }
 
-const MAX_VERSIONS = 30;
+// 원본 + 최근 19개. 버전이 쌓여 무료 D1(DB당 500MB)을 채우지 않도록
+const MAX_VERSIONS = 20;
 
 export const SUMMARY_COLUMNS = "id, title, image, source_type, favorite, time_minutes, servings, tags, created_at, updated_at";
 

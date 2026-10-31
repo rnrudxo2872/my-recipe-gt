@@ -8,8 +8,8 @@ import { kstDay, nextKstMidnight } from "../shared/time";
 import { ApiError, type AppEnv, type SessionUser } from "./env";
 
 export const DEFAULT_POLICY: Policy = {
-  member: { ai: 15, import: 8, video: 3, upload: 20, recipes: 300, burstPerMin: 8, videoMaxMinutes: 20 },
-  limited: { ai: 3, import: 2, video: 0, upload: 3, recipes: 300, burstPerMin: 2, videoMaxMinutes: 0 },
+  member: { ai: 15, import: 8, video: 3, upload: 20, save: 60, recipes: 300, burstPerMin: 8, videoMaxMinutes: 20 },
+  limited: { ai: 3, import: 2, video: 0, upload: 3, save: 10, recipes: 300, burstPerMin: 2, videoMaxMinutes: 0 },
   global: { aiDaily: 900, memberShare: 0.5, videoMinutes: 420, memberVideoShare: 0.4 },
   abuse: { limitAfterDenials: 20, blockAfterDenials: 80 },
 };
@@ -111,10 +111,16 @@ const KIND_LABEL: Record<QuotaKind, string> = {
   import: "링크 가져오기",
   video: "영상 분석",
   upload: "사진 올리기",
+  save: "레시피 저장·수정",
 };
+
+// 본인이 너무 많이(quota_exceeded)·너무 빨리(too_fast) 쓴 경우만 자동 제한 횟수에 센다.
+// 전체 몫 소진이나 긴 영상처럼 본인 잘못이 아닌 거절은 세지 않는다.
+const ABUSE_CODES = new Set(["quota_exceeded", "too_fast"]);
 
 async function deny(env: AppEnv, user: SessionUser, policy: Policy, code: string, message: string, resetAt: number): Promise<never> {
   const db = env.DB;
+  if (!ABUSE_CODES.has(code)) throw new ApiError(429, code, message, { resetAt });
   await addUsage(db, user.id, "denied");
   const usage = await getUsage(db, user.id);
   const denied = usage.denied ?? 0;
@@ -140,7 +146,9 @@ export async function setStatus(db: D1Database, userId: number, status: "active"
  * 기능을 쓰기 전에 부른다. 한도 안이면 사용량을 1 늘리고, 넘으면 429 오류를 던진다.
  * videoMinutes는 영상 분석에서 영상 길이를 넘긴다.
  */
-export async function useQuota(env: AppEnv, user: SessionUser, kind: QuotaKind, opts: { videoMinutes?: number } = {}) {
+export async function useQuota(env: AppEnv, user: SessionUser, kind: QuotaKind, opts: { videoMinutes?: number; aiCost?: boolean } = {}) {
+  // aiCost: false면 AI를 부르지 않는 사용(캐시에서 가져오기)이라 일반 계정 전체 AI 몫에서 빼지 않는다.
+  const aiCost = opts.aiCost !== false;
   const db = env.DB;
   const day = kstDay();
   const resetAt = nextKstMidnight();
@@ -158,13 +166,13 @@ export async function useQuota(env: AppEnv, user: SessionUser, kind: QuotaKind, 
     await deny(env, user, policy, "quota_exceeded", `오늘 ${KIND_LABEL[kind]} 횟수(${limits[kind]}회)를 다 썼어요. 자정에 다시 채워져요.${extra}`, resetAt);
   }
 
-  if (kind !== "upload") {
+  if (kind === "ai" || kind === "import" || kind === "video") {
     const burst = await bump(db, `burst:${user.id}`, 60_000);
     if (burst.count > limits.burstPerMin) {
       await deny(env, user, policy, "too_fast", "요청이 너무 빨라요. 1분 뒤에 다시 시도해 주세요.", burst.resetAt);
     }
     const global = await getUsage(db, 0, day);
-    if ((global.ai_member ?? 0) >= Math.floor(policy.global.aiDaily * policy.global.memberShare)) {
+    if (aiCost && (global.ai_member ?? 0) >= Math.floor(policy.global.aiDaily * policy.global.memberShare)) {
       await deny(env, user, policy, "global_exhausted", "오늘 일반 계정에 배정된 무료 AI 사용량이 모두 찼어요. 자정에 다시 열려요.", resetAt);
     }
     if (kind === "video") {
@@ -188,7 +196,7 @@ export async function useQuota(env: AppEnv, user: SessionUser, kind: QuotaKind, 
   }
 
   await addUsage(db, user.id, kind, 1, day);
-  if (kind === "ai" || kind === "import") await addUsage(db, 0, "ai_member", 1, day);
+  if ((kind === "ai" || kind === "import") && aiCost) await addUsage(db, 0, "ai_member", 1, day);
   if (kind === "video") {
     const minutes = Math.ceil(opts.videoMinutes ?? 10);
     await addUsage(db, 0, "video_min_member", minutes, day);

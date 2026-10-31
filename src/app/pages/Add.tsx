@@ -62,7 +62,15 @@ export function Add() {
     return () => window.clearInterval(t);
   }, [state.kind]);
 
-  useEffect(() => () => abortRef.current?.abort(), []);
+  // 화면을 떠나도 요청은 끊지 않는다. 영상 분석은 1~2분 걸리는데, 끊으면 서버가 30초 안에 못 끝내고 횟수만 쓴다.
+  // 대신 끝났을 때 이 화면이 없으면 토스트로 알린다.
+  const mounted = useRef(true);
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
 
   async function start(opts: { force?: boolean; withCaption?: boolean } = {}) {
     const text = input.trim();
@@ -84,15 +92,21 @@ export function Add() {
           else if (e.type === "done") {
             qc.invalidateQueries({ queryKey: ["recipes"] });
             qc.invalidateQueries({ queryKey: ["me"] });
-            toast.show(e.cached ? "이미 정리된 레시피를 바로 가져왔어요." : "레시피를 저장했어요.");
-            navigate(`/r/${e.recipeId}`, { replace: true });
+            if (mounted.current) {
+              toast.show(e.cached ? "이미 정리된 레시피를 바로 가져왔어요." : "레시피를 저장했어요.");
+              navigate(`/r/${e.recipeId}`, { replace: true });
+            } else {
+              toast.show("가져오던 레시피를 저장했어요.", { action: { label: "열기", onClick: () => navigate(`/r/${e.recipeId}`) }, duration: 8000 });
+            }
           } else if (e.type === "exists") setState({ kind: "exists", recipeId: e.recipeId });
           else if (e.type === "need_caption") {
             qc.invalidateQueries({ queryKey: ["me"] });
             setState({ kind: "need_caption", message: e.message });
+            if (!mounted.current) toast.show("가져오던 링크는 내용을 붙여넣어야 정리할 수 있어요. 레시피 추가에서 다시 넣어 주세요.", { tone: "error" });
           } else if (e.type === "error") {
             qc.invalidateQueries({ queryKey: ["me"] });
             setState({ kind: "error", message: e.message });
+            if (!mounted.current) toast.show(e.message, { tone: "error" });
           }
         },
         controller.signal,
@@ -159,8 +173,8 @@ export function Add() {
           className="btn btn-quiet btn-block"
           style={{ marginTop: 12 }}
           onClick={() => {
-            abortRef.current?.abort();
-            setState({ kind: "idle" });
+            toast.show("다 되면 알려 드릴게요.");
+            navigate("/");
           }}
         >
           기다리지 않고 돌아가기

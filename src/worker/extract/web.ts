@@ -1,7 +1,7 @@
 // 일반 레시피 웹페이지. 대부분의 레시피 사이트는 검색엔진용 구조화 데이터(JSON-LD Recipe)를 넣어 두므로
 // 그게 있으면 AI 없이 바로 정리하고, 없으면 본문 글을 AI에게 넘긴다.
 
-import { normalizeRecipe, parseIngredientLine, type RecipeContent } from "../../shared/recipe";
+import { isUsableRecipe, normalizeRecipe, parseIngredientLine, type RecipeContent } from "../../shared/recipe";
 import { decodeEntities, htmlToText, metaContent, readLimited } from "./text";
 import { parseIsoDuration } from "./youtube";
 
@@ -96,7 +96,8 @@ export function parseRecipePage(html: string, baseUrl: string): WebPage {
     }
   }
   const title = metaContent(html, "og:title") ?? clean(html.match(/<title[^>]*>([\s\S]*?)<\/title>/i)?.[1] ?? "");
-  return { recipe, title, text: recipe ? "" : htmlToText(html), image };
+  // 구조화 데이터가 불완전하면(단계가 빠짐 등) 본문을 AI가 정리할 수 있게 글도 넘긴다.
+  return { recipe, title, text: recipe && isUsableRecipe(recipe) ? "" : htmlToText(html), image };
 }
 
 export async function fetchWebPage(url: string): Promise<WebPage | null> {
@@ -107,7 +108,8 @@ export async function fetchWebPage(url: string): Promise<WebPage | null> {
       signal: AbortSignal.timeout(12_000),
     });
     if (!res.ok || !(res.headers.get("content-type") ?? "").includes("html")) return null;
-    const html = await readLimited(res, 1_500_000);
+    // 큰 페이지를 끝까지 정규식으로 훑으면 무료 Worker의 CPU 10ms를 넘는다. 레시피는 대개 앞부분에 있다.
+    const html = await readLimited(res, 300_000);
     return parseRecipePage(html, res.url || url);
   } catch {
     return null;

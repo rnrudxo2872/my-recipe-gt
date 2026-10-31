@@ -1,7 +1,7 @@
 // 붙여넣은 글이나 공유하기로 들어온 텍스트에서 레시피 출처 링크를 찾아낸다.
 
 export type DetectedSource =
-  | { type: "youtube"; id: string; url: string; key: string }
+  | { type: "youtube"; id: string; url: string; key: string; shorts: boolean }
   | { type: "instagram"; code: string; url: string; key: string }
   | { type: "web"; url: string; key: string };
 
@@ -50,7 +50,7 @@ export function detectSource(text: string): DetectedSource | null {
   }
   if (url.protocol !== "http:" && url.protocol !== "https:") return null;
   const yt = parseYouTubeId(url);
-  if (yt) return { type: "youtube", id: yt, url: `https://www.youtube.com/watch?v=${yt}`, key: `yt:${yt}` };
+  if (yt) return { type: "youtube", id: yt, url: `https://www.youtube.com/watch?v=${yt}`, key: `yt:${yt}`, shorts: url.pathname.startsWith("/shorts/") };
   const ig = parseInstagramCode(url);
   if (ig) return { type: "instagram", code: ig, url: `https://www.instagram.com/reel/${ig}/`, key: `ig:${ig}` };
   // 추적용 파라미터를 지워서 같은 글이 같은 키를 갖게 한다.

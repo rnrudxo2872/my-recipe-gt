@@ -2,7 +2,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { ArrowDown, ArrowUp, Camera, ImagePlus, Plus, Trash2, X } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router";
-import { DIFFICULTIES, formatQty, normalizeRecipe, parseAmount, type Difficulty, type Ingredient, type RecipeContent } from "../../shared/recipe";
+import { DIFFICULTIES, formatQtyExact, normalizeRecipe, parseAmount, type Difficulty, type Ingredient, type RecipeContent } from "../../shared/recipe";
 import { ChipInput } from "../components/ChipInput";
 import { ApiError, api } from "../lib/api";
 import { useDocumentTitle, useRecipe } from "../lib/hooks";
@@ -15,7 +15,8 @@ let seq = 1;
 const nextKey = () => seq++;
 
 function amountText(i: Ingredient): string {
-  return i.qty == null ? i.unit : `${formatQty(i.qty)}${i.unit}`;
+  // 반올림하지 않은 값을 넣어야 제목만 고쳐 저장해도 분량이 바뀌지 않는다.
+  return i.qty == null ? i.unit : `${formatQtyExact(i.qty)}${i.unit}`;
 }
 
 function toRows(ingredients: Ingredient[]): IngRow[] {

@@ -3,7 +3,9 @@ import type { PublicUser } from "../shared/api";
 
 export interface AppEnv {
   DB: D1Database;
-  /** 선택: 사진 저장용 R2. 없으면 D1에 저장 */
+  /** 사진 저장용 KV (기본) */
+  IMAGES_KV?: KVNamespace;
+  /** 선택: 사진 저장용 R2. 있으면 KV 대신 쓴다 */
   IMAGES?: R2Bucket;
   /** 선택: Workers AI (예비 AI 엔진) */
   AI?: Ai;

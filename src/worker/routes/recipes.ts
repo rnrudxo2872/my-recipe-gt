@@ -37,6 +37,7 @@ recipes.post("/", async (c) => {
   if (!content.ingredients.length && !content.steps.length) {
     throw new ApiError(400, "empty_recipe", "재료나 만드는 법을 하나 이상 적어 주세요.");
   }
+  await useQuota(c.env, user, "save");
   const sourceType: SourceType = body.sourceType === "ai" ? "ai" : "manual";
   const id = await createRecipe(c.env, user.id, content, {
     image: cleanImage(body.image),
@@ -58,6 +59,7 @@ recipes.put("/:id", async (c) => {
   const content = normalizeRecipe(body.content);
   const kind: RecipeVersion["kind"] = body.kind === "ai" || body.kind === "substitute" ? body.kind : "edit";
   const note = String(body.note ?? "").trim().slice(0, 80) || (kind === "edit" ? "직접 수정" : kind === "ai" ? "AI로 맛 조정" : "재료 바꿈");
+  await useQuota(c.env, user, "save");
   await saveVersion(c.env, row, content, note, kind);
   return c.json({ recipe: toDetail(await getOwnedRecipe(c.env, user.id, row.id)) });
 });
@@ -109,6 +111,7 @@ recipes.post("/:id/versions/:vid/restore", async (c) => {
     .bind(Number(c.req.param("vid")), row.id)
     .first<{ content: string; note: string; created_at: number }>();
   if (!v) throw new ApiError(404, "not_found", "그 버전을 찾을 수 없어요.");
+  await useQuota(c.env, user, "save");
   await saveVersion(c.env, row, normalizeRecipe(JSON.parse(v.content)), `'${v.note}'(으)로 되돌림`.slice(0, 80), "restore");
   return c.json({ recipe: toDetail(await getOwnedRecipe(c.env, user.id, row.id)) });
 });

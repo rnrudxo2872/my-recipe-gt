@@ -22,7 +22,7 @@ import {
   Undo2,
   Users,
 } from "lucide-react";
-import { Fragment, useMemo, useRef, useState } from "react";
+import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router";
 import type { SubstituteResult } from "../../shared/api";
 import { formatAmount, formatQty, recipeToText, type Ingredient, type RecipeContent, type RecipeDetail, type RecipeVersion } from "../../shared/recipe";
@@ -626,13 +626,17 @@ function TweakSheet(props: { open: boolean; onClose: () => void; recipe: RecipeD
     onError: (e) => toast.error(e),
   });
 
+  // 레시피가 다른 방법으로 바뀌면 옛 내용 기준 결과는 버린다(저장하면 바뀐 내용을 덮어쓰게 되므로).
+  const { reset } = tweak;
+  useEffect(() => {
+    reset();
+  }, [recipe.updatedAt, reset]);
+
   const before = new Set(recipe.content.ingredients.map((i) => `${i.name} ${formatAmount(i)}`));
 
+  // 닫아도 받은 결과는 남겨 둔다. 다시 열면 AI를 또 부르지 않고 이어서 저장할 수 있다.
   function close() {
-    if (!tweak.isPending && !save.isPending) {
-      tweak.reset();
-      setShowFull(false);
-    }
+    setShowFull(false);
     props.onClose();
   }
 

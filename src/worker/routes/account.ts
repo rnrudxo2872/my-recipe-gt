@@ -16,7 +16,7 @@ import {
   verifyTurnstile,
 } from "../auth";
 import { ApiError, clientIp, readJson, type HonoEnv, type SessionUser } from "../env";
-import { deleteImageIfUnused } from "../images";
+import { deleteUnusedImagesOf } from "../images";
 import { getPolicy, getUsage, limitAttempts, limitsFor, isUnlimited } from "../quota";
 
 const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -33,7 +33,7 @@ function validateCredentials(email: unknown, password: unknown) {
 export async function buildMe(c: { env: HonoEnv["Bindings"] }, user: SessionUser): Promise<MeResponse> {
   const policy = await getPolicy(c.env.DB);
   const usage = await getUsage(c.env.DB, user.id);
-  const kinds: QuotaKind[] = ["ai", "import", "video", "upload"];
+  const kinds: QuotaKind[] = ["ai", "import", "video", "upload", "save"];
   return {
     user: publicOnly(user),
     unlimited: isUnlimited(user),
@@ -64,8 +64,9 @@ account.post("/auth/signup", async (c) => {
   let role: "admin" | "member" = "member";
   if (admins.includes(email)) role = "admin";
   else if (!admins.length) {
-    const anyAdmin = await c.env.DB.prepare("SELECT 1 FROM users WHERE role = 'admin' LIMIT 1").first();
-    if (!anyAdmin) role = "admin"; // 관리자 이메일을 정하지 않았으면 첫 가입자가 관리자
+    // 관리자 이메일을 정하지 않았으면 이 앱의 맨 첫 가입자만 관리자가 된다(관리자가 없어져도 다음 가입자가 되지 않게).
+    const anyUser = await c.env.DB.prepare("SELECT 1 FROM users LIMIT 1").first();
+    if (!anyUser) role = "admin";
   }
   const hash = await hashPassword(body.password!, c.env);
   const now = Date.now();
@@ -152,27 +153,28 @@ account.delete("/me", requireUser, async (c) => {
   if (!row || !(await verifyPassword(String(body.password ?? ""), row.password_hash, c.env))) {
     throw new ApiError(400, "bad_credentials", "비밀번호가 맞지 않아요.");
   }
+  if (user.role === "admin") {
+    const admins = await c.env.DB.prepare("SELECT COUNT(*) AS n FROM users WHERE role = 'admin'").first<{ n: number }>();
+    if ((admins?.n ?? 0) <= 1) {
+      throw new ApiError(400, "last_admin", "마지막 관리자는 계정을 지울 수 없어요. 다른 사람을 관리자로 지정한 뒤 지워 주세요.");
+    }
+  }
   await deleteUserData(c.env, user.id);
   await destroySession(c);
   return c.json({ ok: true });
 });
 
+/** 사용자와 그 데이터를 지운다. 쿼리 수가 레시피 수와 상관없이 일정하다(무료 플랜은 요청당 D1 쿼리 50개까지). */
 export async function deleteUserData(env: HonoEnv["Bindings"], userId: number) {
-  const { results } = await env.DB.prepare("SELECT image FROM recipes WHERE user_id = ?1 AND image LIKE '/img/%'").bind(userId).all<{ image: string }>();
   await env.DB.batch([
     env.DB.prepare("DELETE FROM recipe_versions WHERE recipe_id IN (SELECT id FROM recipes WHERE user_id = ?1)").bind(userId),
     env.DB.prepare("DELETE FROM recipes WHERE user_id = ?1").bind(userId),
     env.DB.prepare("DELETE FROM pantry WHERE user_id = ?1").bind(userId),
     env.DB.prepare("DELETE FROM sessions WHERE user_id = ?1").bind(userId),
     env.DB.prepare("DELETE FROM usage_daily WHERE user_id = ?1").bind(userId),
-  ]);
-  for (const r of results) await deleteImageIfUnused(env, r.image, userId);
-  if (env.IMAGES) {
-    const { results: left } = await env.DB.prepare("SELECT key FROM images WHERE user_id = ?1 AND store = 'r2'").bind(userId).all<{ key: string }>();
-    for (const r of left) await env.IMAGES.delete(r.key);
-  }
-  await env.DB.batch([
-    env.DB.prepare("DELETE FROM images WHERE user_id = ?1").bind(userId),
     env.DB.prepare("DELETE FROM users WHERE id = ?1").bind(userId),
   ]);
+  // 아무도 안 쓰는 사진은 지금 지우고, 남은 것은 매일 정리에서 지운다.
+  // 다른 사람이 같은 링크를 가져와 공용 캐시로 쓰는 사진은 남겨 둔다.
+  await deleteUnusedImagesOf(env, userId);
 }

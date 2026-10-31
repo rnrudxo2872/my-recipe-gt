@@ -120,7 +120,8 @@ export async function fetchYouTubeMeta(env: AppEnv, id: string, isShorts: boolea
     title: page?.title || oembed?.title || "",
     description: page?.description ?? "",
     channel: page?.channel || oembed?.channel || "",
-    durationSec: page?.durationSec ?? (isShorts ? 60 : null),
+    // 쇼츠는 최대 3분이다. 그 밖에 길이를 모르면 null (일반 계정은 영상 분석을 하지 않는다)
+    durationSec: page?.durationSec ?? (isShorts ? 180 : null),
     thumbnail,
   };
 }

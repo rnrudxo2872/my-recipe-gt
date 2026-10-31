@@ -133,6 +133,15 @@ r = await member("POST", "/api/import", {
   caption: "초간단 김치볶음밥 🍳 재료: 김치 1컵, 밥 1공기, 달걀 1개, 참기름 약간. 김치를 볶다가 밥을 넣고 달걀 프라이를 올려요.",
 });
 check("인스타 캡션 붙여넣기 → 레시피", Array.isArray(r.data) && r.data.some((e) => e.type === "done"), r.data);
+r = await friend("POST", "/api/import", { link: "https://www.instagram.com/reel/TESTCODE123/" });
+check("붙여넣은 캡션은 공용 캐시에 쓰지 않음", Array.isArray(r.data) && r.data.some((e) => e.type === "need_caption"), r.data);
+
+r = await member("GET", "/api/me");
+const importsBefore = r.data.me.usage.import;
+r = await member("POST", "/api/import", { text: "레시피 아님 — 오늘 날씨가 좋아서 산책을 했어요. 저녁에는 친구를 만날 예정이에요." });
+check("레시피가 아닌 글은 안내", Array.isArray(r.data) && r.data.some((e) => e.type === "error" && e.code === "not_recipe"), r.data);
+r = await member("GET", "/api/me");
+check("AI를 쓴 실패는 횟수를 돌려주지 않음", r.data.me.usage.import === importsBefore + 1, { before: importsBefore, after: r.data.me.usage.import });
 
 console.log("레시피 보기·수정·버전");
 r = await member("GET", "/api/recipes");

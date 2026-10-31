@@ -3,13 +3,16 @@ import type { AppConfig } from "../shared/api";
 import { aiReady } from "./ai/providers";
 import { requireUser } from "./auth";
 import { ApiError, type AppEnv, type HonoEnv } from "./env";
-import { getImage, imageUrl, putImage } from "./images";
-import { useQuota } from "./quota";
+import { cleanOrphanImages, getImage, imageUrl, putImage } from "./images";
+import { isUnlimited, useQuota } from "./quota";
 import { account } from "./routes/account";
 import { admin } from "./routes/admin";
 import { fridge } from "./routes/fridge";
 import { importer } from "./routes/import";
 import { recipes } from "./routes/recipes";
+
+// 일반 계정 한 명이 올릴 수 있는 사진 총수 (KV 1GB를 나눠 쓰므로)
+const MAX_IMAGES_PER_MEMBER = 200;
 
 const app = new Hono<HonoEnv>();
 
@@ -43,6 +46,12 @@ app.post("/api/images", requireUser, async (c) => {
   const mime = (c.req.header("content-type") ?? "").split(";")[0].trim();
   const length = Number(c.req.header("content-length") ?? 0);
   if (length > 1_300_000) throw new ApiError(413, "image_too_large", "사진이 너무 커요. 1MB 이하로 줄여 주세요.");
+  if (!isUnlimited(user)) {
+    const row = await c.env.DB.prepare("SELECT COUNT(*) AS n FROM images WHERE user_id = ?1").bind(user.id).first<{ n: number }>();
+    if ((row?.n ?? 0) >= MAX_IMAGES_PER_MEMBER) {
+      throw new ApiError(403, "image_limit", `사진은 ${MAX_IMAGES_PER_MEMBER}장까지 올릴 수 있어요. 안 쓰는 레시피를 지운 뒤 다시 시도해 주세요.`);
+    }
+  }
   await useQuota(c.env, user, "upload");
   const bytes = new Uint8Array(await c.req.arrayBuffer());
   const key = await putImage(c.env, user.id, bytes, mime);
@@ -86,5 +95,6 @@ export default {
       env.DB.prepare("DELETE FROM usage_daily WHERE day < ?1").bind(old),
       env.DB.prepare("DELETE FROM events WHERE created_at < ?1").bind(now - 90 * 24 * 60 * 60 * 1000),
     ]);
+    await cleanOrphanImages(env);
   },
 } satisfies ExportedHandler<AppEnv>;

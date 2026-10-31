@@ -180,3 +180,32 @@ describe("time", () => {
 function ing(name: string) {
   return { name, qty: null, unit: "", note: "", group: "" };
 }
+
+describe("review fixes", () => {
+  it("keeps grouped ingredients together so headings stay right", () => {
+    const r = normalizeRecipe({
+      ingredients: [
+        { name: "김치", qty: 1, unit: "컵", note: "", group: "" },
+        { name: "고추장", qty: 1, unit: "큰술", note: "", group: "양념장" },
+        { name: "밥", qty: 2, unit: "공기", note: "", group: "" },
+        { name: "설탕", qty: 1, unit: "작은술", note: "", group: "양념장" },
+      ],
+      steps: ["볶는다"],
+    });
+    expect(r.ingredients.map((i) => i.name)).toEqual(["김치", "밥", "고추장", "설탕"]);
+  });
+  it("does not cut content that only looks like a step number", () => {
+    const r = normalizeRecipe({ steps: ["2:1 비율로 섞어요", "1.5컵을 넣어요", "3. 볶아요", "Step 4: 담아요"] });
+    expect(r.steps).toEqual(["2:1 비율로 섞어요", "1.5컵을 넣어요", "볶아요", "담아요"]);
+  });
+  it("edits round-trip amounts exactly", async () => {
+    const { formatQtyExact, parseAmount } = await import("../src/shared/recipe");
+    for (const q of [2.45, 22.5, 0.01, 1.5, 1 / 3, 0.25, 150]) {
+      expect(parseAmount(`${formatQtyExact(q)}g`).qty).toBeCloseTo(q, 3);
+    }
+  });
+  it("marks shorts only from the path", () => {
+    expect(detectSource("https://www.youtube.com/shorts/dQw4w9WgXcQ")).toMatchObject({ shorts: true });
+    expect(detectSource("https://www.youtube.com/watch?v=dQw4w9WgXcQ&x=/shorts/")).toMatchObject({ shorts: false });
+  });
+});

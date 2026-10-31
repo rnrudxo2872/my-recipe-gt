@@ -56,8 +56,11 @@ export function normalizeName(name: string): string {
 
 /** 냉장고 재료 하나(have)가 레시피 재료(need)를 채우는지 */
 export function ingredientMatches(have: string, need: string): boolean {
-  const h = normalizeName(have);
-  const n = normalizeName(need);
+  return normalizedMatches(normalizeName(have), normalizeName(need));
+}
+
+/** 이미 정규화한 이름끼리 비교. 많이 비교할 때는 이쪽을 쓴다. */
+function normalizedMatches(h: string, n: string): boolean {
   if (!h || !n) return false;
   if (h === n) return true;
   // '파'가 '양파'에 걸리는 것처럼 한 글자 재료는 부분 일치를 허용하지 않는다.
@@ -66,9 +69,10 @@ export function ingredientMatches(have: string, need: string): boolean {
   return n.startsWith(h) || n.endsWith(h) || h.startsWith(n) || h.endsWith(n);
 }
 
+const STAPLE_KEYS = new Set(STAPLES.map(normalizeName));
+
 export function isStaple(name: string): boolean {
-  const n = normalizeName(name);
-  return STAPLES.some((s) => normalizeName(s) === n);
+  return STAPLE_KEYS.has(normalizeName(name));
 }
 
 export interface PantryMatch {
@@ -88,8 +92,19 @@ export function matchPantry(
   recipes: { id: string; content: Pick<RecipeContent, "ingredients"> }[],
   assumeStaples: boolean,
 ): PantryMatch[] {
-  const items = pantry.map((p) => p.trim()).filter(Boolean);
+  // 무료 Worker는 요청당 CPU가 10ms라서, 이름 정규화는 요청마다 한 번씩만 한다.
+  const items = [...new Set(pantry.map((p) => normalizeName(p.trim())).filter(Boolean))];
   if (!items.length) return [];
+  const keys = new Map<string, string>();
+  const verdict = new Map<string, boolean>();
+  const inPantry = (key: string) => {
+    let v = verdict.get(key);
+    if (v === undefined) {
+      v = items.some((p) => normalizedMatches(p, key));
+      verdict.set(key, v);
+    }
+    return v;
+  };
   const out: PantryMatch[] = [];
   for (const recipe of recipes) {
     const have: string[] = [];
@@ -97,14 +112,17 @@ export function matchPantry(
     let usesPantry = false;
     const seen = new Set<string>();
     for (const ing of recipe.content.ingredients) {
-      const key = normalizeName(ing.name);
+      let key = keys.get(ing.name);
+      if (key === undefined) {
+        key = normalizeName(ing.name);
+        keys.set(ing.name, key);
+      }
       if (!key || seen.has(key)) continue;
       seen.add(key);
-      const fromPantry = items.some((p) => ingredientMatches(p, ing.name));
-      if (fromPantry) {
+      if (inPantry(key)) {
         usesPantry = true;
         have.push(ing.name);
-      } else if (assumeStaples && isStaple(ing.name)) {
+      } else if (assumeStaples && STAPLE_KEYS.has(key)) {
         continue;
       } else {
         missing.push(ing.name);
