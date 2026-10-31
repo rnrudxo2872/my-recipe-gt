@@ -1,0 +1,24 @@
+# 로컬 개발용 비밀값. 이 파일을 .dev.vars로 복사해서 채우세요.
+# 배포 환경에는 `npx wrangler secret put 이름`으로 넣습니다.
+
+# 필수: 비밀번호 해시에 섞는 서버 비밀값 (아무 긴 랜덤 문자열)
+AUTH_PEPPER=change-me-to-a-long-random-string
+
+# Gemini API 키 (https://aistudio.google.com/apikey)
+GEMINI_API_KEY=
+
+# 선택: 예비 AI 엔진
+GROQ_API_KEY=
+OPENROUTER_API_KEY=
+
+# 선택: 유튜브 설명란 조회용 (Google Cloud에서 YouTube Data API v3 사용 설정 후 키 발급)
+YOUTUBE_API_KEY=
+
+# 선택: 가입 봇 차단 (Cloudflare Turnstile 비밀 키, 사이트 키는 wrangler.jsonc vars에)
+TURNSTILE_SECRET=
+
+# 선택: 폰서버 인스타 도우미 토큰 (helper/insta_helper.py 실행 시 지정한 값)
+INSTA_HELPER_TOKEN=
+
+# 로컬 테스트용: 1이면 AI를 부르지 않고 예시 응답을 돌려줍니다.
+AI_MOCK=0
