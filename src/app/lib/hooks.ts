@@ -16,6 +16,12 @@ export function useUser() {
   return data!;
 }
 
+/** 오늘 남은 AI 기능 횟수. 지인·관리자처럼 한도가 없으면 null */
+export function useAiLeft(): number | null {
+  const me = useUser();
+  return me.limits ? Math.max(0, me.limits.ai - me.usage.ai) : null;
+}
+
 export function useRecipes() {
   return useQuery({ queryKey: ["recipes"], queryFn: api.recipes, staleTime: 15_000 });
 }

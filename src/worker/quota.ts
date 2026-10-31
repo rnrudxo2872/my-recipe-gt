@@ -8,8 +8,9 @@ import { kstDay, nextKstMidnight } from "../shared/time";
 import { ApiError, type AppEnv, type SessionUser } from "./env";
 
 export const DEFAULT_POLICY: Policy = {
-  member: { ai: 15, import: 8, video: 3, upload: 20, save: 60, recipes: 300, burstPerMin: 8, videoMaxMinutes: 20 },
-  limited: { ai: 3, import: 2, video: 0, upload: 3, save: 10, recipes: 300, burstPerMin: 2, videoMaxMinutes: 0 },
+  // 일반 계정은 맛보기 수준으로 둔다(나중에 멤버십으로 늘릴 예정). 지인·관리자는 한도 없음.
+  member: { ai: 3, import: 3, video: 3, upload: 20, save: 60, recipes: 300, burstPerMin: 8, videoMaxMinutes: 20 },
+  limited: { ai: 1, import: 1, video: 0, upload: 3, save: 10, recipes: 300, burstPerMin: 2, videoMaxMinutes: 0 },
   global: { aiDaily: 900, memberShare: 0.5, videoMinutes: 420, memberVideoShare: 0.4 },
   abuse: { limitAfterDenials: 20, blockAfterDenials: 80 },
 };

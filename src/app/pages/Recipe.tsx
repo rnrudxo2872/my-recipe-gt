@@ -30,7 +30,7 @@ import { InstagramIcon, YouTubeIcon } from "../components/Icons";
 import { RecipeImage } from "../components/RecipeImage";
 import { Sheet } from "../components/Sheet";
 import { ApiError, api } from "../lib/api";
-import { useDocumentTitle, useRecipe, useRecipeSummary } from "../lib/hooks";
+import { useAiLeft, useDocumentTitle, useRecipe, useRecipeSummary } from "../lib/hooks";
 import { compressImage } from "../lib/image";
 import { relativeTime, replaceIngredientName } from "../lib/text";
 import { useToast } from "../lib/toast";
@@ -122,6 +122,7 @@ export function RecipePage() {
   const [sheet, setSheet] = useState<null | "subs" | "tweak" | "versions" | "menu" | "delete">(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const scale = useScale(recipe?.content.servings ?? null);
+  const aiLeft = useAiLeft();
 
   const setDetail = (r: RecipeDetail) => {
     qc.setQueryData(["recipe", r.id], r);
@@ -350,8 +351,17 @@ export function RecipePage() {
 
       {missing.size > 0 && sheet === null && (
         <div className="missing-bar" role="region" aria-label="없는 재료">
-          <p>없는 재료 {missing.size}개</p>
-          <button type="button" className="btn btn-primary btn-sm" onClick={() => setSheet("subs")}>
+          <p>
+            없는 재료 {missing.size}개
+            {aiLeft !== null && <span className="bar-sub">{aiLeft > 0 ? `오늘 AI ${aiLeft}번 남음` : "오늘 AI를 다 썼어요. 자정에 다시 채워져요."}</span>}
+          </p>
+          <button
+            type="button"
+            className="btn btn-primary btn-sm"
+            // 같은 재료로 이미 받아 둔 결과는 AI를 다시 부르지 않으니 횟수를 다 써도 열 수 있다.
+            disabled={aiLeft === 0 && !(recipe && qc.getQueryData(["subs", recipe.id, recipe.updatedAt, missingNames.join("|")]))}
+            onClick={() => setSheet("subs")}
+          >
             <Repeat2 aria-hidden="true" />
             대체 재료 찾기
           </button>
@@ -506,6 +516,11 @@ function SubstituteSheet(props: { open: boolean; onClose: () => void; recipe: Re
   const [choices, setChoices] = useState<Record<string, Choice>>({});
   const result = query.data;
 
+  // AI를 한 번 썼으니 남은 횟수를 새로 받는다.
+  useEffect(() => {
+    if (query.dataUpdatedAt) qc.invalidateQueries({ queryKey: ["me"] });
+  }, [query.dataUpdatedAt, qc]);
+
   // 결과가 오면 첫 번째 추천을 골라 둔다.
   const effective = useMemo(() => {
     const out: Record<string, Choice> = {};
@@ -612,6 +627,7 @@ function TweakSheet(props: { open: boolean; onClose: () => void; recipe: RecipeD
   const qc = useQueryClient();
   const [instruction, setInstruction] = useState("");
   const [showFull, setShowFull] = useState(false);
+  const aiLeft = useAiLeft();
   const tweak = useMutation({
     mutationFn: (text: string) => api.tweak(recipe.id, text),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["me"] }),
@@ -723,10 +739,13 @@ function TweakSheet(props: { open: boolean; onClose: () => void; recipe: RecipeD
           <span className="label">직접 적기</span>
           <input className="input" value={instruction} maxLength={200} placeholder="예: 버터 대신 올리브유로, 에어프라이어로" onChange={(e) => setInstruction(e.target.value)} />
         </label>
+        {aiLeft !== null && (
+          <p className="help">{aiLeft > 0 ? `오늘 AI ${aiLeft}번 남았어요.` : "오늘 AI를 다 썼어요. 자정에 다시 채워져요. 직접 수정은 언제든 할 수 있어요."}</p>
+        )}
       </>
     );
     footer = (
-      <button type="button" className="btn btn-primary btn-block" disabled={!instruction.trim()} onClick={() => tweak.mutate(instruction.trim())}>
+      <button type="button" className="btn btn-primary btn-block" disabled={!instruction.trim() || aiLeft === 0} onClick={() => tweak.mutate(instruction.trim())}>
         <Sparkles aria-hidden="true" />
         이렇게 바꿔 보기
       </button>

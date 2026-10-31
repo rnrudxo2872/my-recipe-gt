@@ -76,6 +76,9 @@ if (r.data.me?.user.role !== "admin") {
 }
 const firstIsAdmin = r.data.me?.user.role === "admin";
 check("관리자 계정 준비", firstIsAdmin, r.data);
+// 기능 점검 동안은 일반 계정 한도를 넉넉히 둔다. 한도 점검 구간에서 기본값으로 되돌린다.
+r = await admin("PUT", "/api/admin/policy", { policy: { member: { ai: 30, import: 20 } } });
+check("점검용 한도 설정", r.data.policy?.member.ai === 30, r.data);
 
 r = await member("POST", "/api/auth/signup", { email: `member-${stamp}@test.dev`, password: "password123", name: "일반" });
 check("일반 가입", r.status === 200, r.data);
@@ -196,27 +199,30 @@ r = await member("POST", "/api/recipes", { content: r.data.recipes[1], sourceTyp
 check("추천 레시피 저장", r.status === 200 && r.data.id, r.data);
 
 console.log("한도와 자동 제한");
-r = await member("GET", "/api/me");
-const me = r.data.me;
-console.log(`    오늘 사용: AI ${me.usage.ai}/${me.limits.ai}, 가져오기 ${me.usage.import}/${me.limits.import}`);
-let denied = null;
+// 1) 분당 한도: 하루 한도를 넉넉히 둔 채 빠르게 보내면 too_fast
 let fastHit = false;
-for (let i = 0; i < 40; i++) {
+for (let i = 0; i < 15 && !fastHit; i++) {
   r = await member("POST", `/api/recipes/${recipeId}/substitutes`, { missing: ["대파"] }, { noWait: true });
-  if (r.status === 429) {
-    if (r.data.error.code === "too_fast") fastHit = true;
-    if (r.data.error.code === "quota_exceeded") {
-      denied = r.data;
-      break;
-    }
-  }
+  if (r.status === 429 && r.data.error.code === "too_fast") fastHit = true;
 }
 check("분당 한도(너무 빠름) 걸림", fastHit);
-check("하루 한도 넘으면 429와 안내", denied?.error?.code === "quota_exceeded" && typeof denied.error.resetAt === "number", denied);
+
+// 2) 기본 한도로 되돌리면 이미 3회를 넘게 쓴 일반 계정은 바로 하루 한도에 걸린다
+r = await admin("PUT", "/api/admin/policy", { policy: {} });
+check("기본 한도: 일반 계정 링크 3회·AI 3회", r.data.policy?.member.ai === 3 && r.data.policy.member.import === 3, r.data.policy?.member);
+r = await member("GET", "/api/me");
+console.log(`    오늘 사용: AI ${r.data.me.usage.ai}/${r.data.me.limits.ai}, 가져오기 ${r.data.me.usage.import}/${r.data.me.limits.import}`);
+r = await member("POST", `/api/recipes/${recipeId}/substitutes`, { missing: ["대파"] }, { noWait: true });
+check("하루 한도 넘으면 429와 안내", r.data?.error?.code === "quota_exceeded" && /3회/.test(r.data.error.message) && typeof r.data.error.resetAt === "number", r.data);
+r = await member("POST", "/api/import", { text: "김치볶음밥 재료: 김치 1컵, 밥 2공기, 스팸 100g 1. 볶는다 2. 밥을 넣는다" }, { noWait: true });
+// 가져오기는 진행 단계를 스트림으로 보내므로 한도 초과도 스트림 안의 오류 이벤트로 온다.
+check("링크 가져오기도 하루 3회", Array.isArray(r.data) && r.data.some((e) => e.type === "error" && e.code === "quota_exceeded" && /3회/.test(e.message)), r.data);
+
+// 3) 거절이 쌓이면 자동 제한
 for (let i = 0; i < 25; i++) await member("POST", `/api/recipes/${recipeId}/substitutes`, { missing: ["대파"] }, { noWait: true });
 r = await member("GET", "/api/me");
 check("거절이 쌓이면 자동 제한", r.data.me?.user.status === "limited", r.data.me?.user);
-check("제한된 계정은 한도가 줄어듦", r.data.me?.limits?.ai === 3, r.data.me?.limits);
+check("제한된 계정은 한도가 줄어듦", r.data.me?.limits?.ai === 1 && r.data.me.limits.import === 1, r.data.me?.limits);
 
 r = await friend("POST", `/api/import`, { text: "된장찌개 재료: 된장 2큰술, 두부 반 모, 애호박 1/2개, 물 500ml\n1. 물에 된장을 푼다 2. 채소를 넣고 끓인다" });
 let friendOk = Array.isArray(r.data) && r.data.some((e) => e.type === "done");
@@ -249,8 +255,8 @@ if (firstIsAdmin) {
   r = await member("POST", "/api/auth/login", { email: `member-${stamp}@test.dev`, password: temp });
   check("임시 비밀번호로 로그인", r.status === 200, r.data);
   r = await admin("PUT", "/api/admin/policy", { policy: { member: { ai: 50 } } });
-  check("한도 설정 저장", r.data.policy?.member.ai === 50 && r.data.policy.member.import === 8, r.data);
-  await admin("PUT", "/api/admin/policy", { policy: { member: { ai: 15 } } });
+  check("한도 설정 저장", r.data.policy?.member.ai === 50 && r.data.policy.member.import === 3, r.data);
+  await admin("PUT", "/api/admin/policy", { policy: {} });
 }
 
 console.log("정리");
