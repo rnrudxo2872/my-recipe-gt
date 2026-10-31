@@ -53,6 +53,6 @@ export function useOnline() {
 
 export function useDocumentTitle(title: string | undefined) {
   useEffect(() => {
-    document.title = title ? `${title} | 레시피GT` : "레시피GT";
+    document.title = title ? `${title} | 레시퐁` : "레시퐁";
   }, [title]);
 }

@@ -1,24 +1,25 @@
-// 관리자: 사용자 역할·상태 관리, 초대 코드, 사용량 한도 설정
+// 관리자: 사용자 권한·상태 관리(이메일로 권한 바꾸기 포함), 사용량 한도 설정
 
 import { Hono } from "hono";
 import type { AdminOverview, AdminUserRow, Role, UserStatus } from "../../shared/api";
 import { kstDay } from "../../shared/time";
 import { providerStatus } from "../ai/providers";
-import { hashPassword, requireAdmin, requireUser, toPublicUser } from "../auth";
+import { hashPassword, requireAdmin, requireVerified, toPublicUser } from "../auth";
 import { ApiError, isMock, randomId, readJson, type HonoEnv } from "../env";
+import { mailMode } from "../mail";
 import { clearPolicyCache, getPolicy, mergePolicy, setStatus } from "../quota";
 import { deleteUserData } from "./account";
 
 export const admin = new Hono<HonoEnv>();
-admin.use("*", requireUser, requireAdmin);
+admin.use("*", requireVerified, requireAdmin);
 
 admin.get("/overview", async (c) => {
   const db = c.env.DB;
   const day = kstDay();
-  const [users, usage, global, events, invites, policy] = await Promise.all([
+  const [users, usage, global, events, grants, policy] = await Promise.all([
     db
       .prepare(
-        `SELECT u.id, u.email, u.name, u.role, u.status, u.status_reason, u.created_at, u.last_seen_at,
+        `SELECT u.id, u.email, u.name, u.role, u.status, u.status_reason, u.created_at, u.last_seen_at, u.email_verified_at,
            (SELECT COUNT(*) FROM recipes r WHERE r.user_id = u.id) AS recipe_count
          FROM users u ORDER BY u.last_seen_at DESC NULLS LAST LIMIT 500`,
       )
@@ -31,8 +32,8 @@ admin.get("/overview", async (c) => {
       )
       .all<{ id: number; user_id: number | null; user_name: string | null; kind: string; detail: string; created_at: number }>(),
     db
-      .prepare("SELECT code, note, max_uses, uses, created_at, expires_at FROM invites ORDER BY created_at DESC LIMIT 50")
-      .all<{ code: string; note: string; max_uses: number; uses: number; created_at: number; expires_at: number | null }>(),
+      .prepare("SELECT email, role, created_at FROM role_grants ORDER BY created_at DESC LIMIT 100")
+      .all<{ email: string; role: Role; created_at: number }>(),
     getPolicy(db),
   ]);
   const todayByUser = new Map<number, AdminUserRow["today"]>();
@@ -47,8 +48,9 @@ admin.get("/overview", async (c) => {
     global: Object.fromEntries(global.results.map((g) => [g.kind, g.count])),
     policy,
     events: events.results.map((e) => ({ id: e.id, userId: e.user_id, userName: e.user_name, kind: e.kind, detail: e.detail, createdAt: e.created_at })),
-    invites: invites.results.map((i) => ({ code: i.code, note: i.note, maxUses: i.max_uses, uses: i.uses, createdAt: i.created_at, expiresAt: i.expires_at })),
+    grants: grants.results.map((g) => ({ email: g.email, role: g.role, createdAt: g.created_at })),
     providers: {
+      mail: mailMode(c.env),
       ...providers,
       youtubeApi: Boolean(c.env.YOUTUBE_API_KEY),
       instaHelper: Boolean(c.env.INSTA_HELPER_URL),
@@ -62,7 +64,7 @@ admin.get("/overview", async (c) => {
 admin.patch("/users/:id", async (c) => {
   const id = Number(c.req.param("id"));
   const me = c.get("user");
-  const body = await readJson<{ role?: Role; status?: UserStatus; reason?: string }>(c);
+  const body = await readJson<{ role?: Role; status?: UserStatus; reason?: string; verified?: boolean }>(c);
   const target = await c.env.DB.prepare("SELECT id, role FROM users WHERE id = ?1").bind(id).first<{ id: number; role: Role }>();
   if (!target) throw new ApiError(404, "not_found", "사용자를 찾을 수 없어요.");
   if (id === me.id && (body.role && body.role !== "admin")) throw new ApiError(400, "self", "내 관리자 권한은 내가 뺄 수 없어요.");
@@ -83,6 +85,13 @@ admin.patch("/users/:id", async (c) => {
       await c.env.DB.prepare("DELETE FROM usage_daily WHERE user_id = ?1 AND day = ?2 AND kind = 'denied'").bind(id, kstDay()).run();
     }
   }
+  // 메일이 안 가는 지인을 관리자가 직접 인증 처리할 때
+  if (body.verified === true) {
+    await c.env.DB.batch([
+      c.env.DB.prepare("UPDATE users SET email_verified_at = COALESCE(email_verified_at, ?1) WHERE id = ?2").bind(Date.now(), id),
+      c.env.DB.prepare("INSERT INTO events (user_id, kind, detail, created_at) VALUES (?1, 'verify', '관리자: 이메일 인증 처리', ?2)").bind(id, Date.now()),
+    ]);
+  }
   return c.json({ ok: true });
 });
 
@@ -102,27 +111,40 @@ admin.delete("/users/:id", async (c) => {
   return c.json({ ok: true });
 });
 
-// 헷갈리는 글자(0/O, 1/I)는 뺀 초대 코드
-function inviteCode(): string {
-  const alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
-  const bytes = crypto.getRandomValues(new Uint8Array(8));
-  return [...bytes].map((b) => alphabet[b % alphabet.length]).join("");
-}
+const ROLES: Role[] = ["admin", "friend", "member"];
 
-admin.post("/invites", async (c) => {
-  const body = await readJson<{ note?: string; maxUses?: number; expiresDays?: number | null }>(c);
-  const code = inviteCode();
-  const maxUses = Math.min(100, Math.max(1, Math.round(Number(body.maxUses) || 1)));
-  const days = Number(body.expiresDays);
-  const expiresAt = Number.isFinite(days) && days > 0 ? Date.now() + days * 24 * 60 * 60 * 1000 : null;
-  await c.env.DB.prepare("INSERT INTO invites (code, note, max_uses, uses, created_by, created_at, expires_at) VALUES (?1, ?2, ?3, 0, ?4, ?5, ?6)")
-    .bind(code, String(body.note ?? "").trim().slice(0, 40), maxUses, c.get("user").id, Date.now(), expiresAt)
+/**
+ * 이메일로 권한 바꾸기. 지인이 "나 이 이메일로 가입했어"라고 알려 주면 여기에 넣는다.
+ * 아직 가입하지 않은 이메일이면 예약해 두고, 그 이메일로 가입해 인증을 마치면 적용한다.
+ */
+admin.post("/roles", async (c) => {
+  const body = await readJson<{ email?: string; role?: Role }>(c);
+  const email = String(body.email ?? "").trim().toLowerCase();
+  const role = body.role ?? "friend";
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || email.length > 120) throw new ApiError(400, "bad_email", "이메일 주소를 확인해 주세요.");
+  if (!ROLES.includes(role)) throw new ApiError(400, "bad_role", "알 수 없는 권한이에요.");
+  const me = c.get("user");
+  const user = await c.env.DB.prepare("SELECT id, name, role FROM users WHERE email = ?1").bind(email).first<{ id: number; name: string; role: Role }>();
+  if (user) {
+    if (user.id === me.id && role !== "admin") throw new ApiError(400, "self", "내 관리자 권한은 내가 뺄 수 없어요.");
+    await c.env.DB.batch([
+      c.env.DB.prepare("UPDATE users SET role = ?1 WHERE id = ?2").bind(role, user.id),
+      // 같은 이메일에 남아 있던 예약은 필요 없어진다.
+      c.env.DB.prepare("DELETE FROM role_grants WHERE email = ?1").bind(email),
+      c.env.DB.prepare("INSERT INTO events (user_id, kind, detail, created_at) VALUES (?1, 'role', ?2, ?3)").bind(user.id, `관리자: 권한을 ${role}(으)로 바꿈`, Date.now()),
+    ]);
+    return c.json({ status: "updated", name: user.name, previous: user.role });
+  }
+  await c.env.DB.prepare(
+    "INSERT INTO role_grants (email, role, created_by, created_at) VALUES (?1, ?2, ?3, ?4) ON CONFLICT(email) DO UPDATE SET role = excluded.role, created_at = excluded.created_at",
+  )
+    .bind(email, role, me.id, Date.now())
     .run();
-  return c.json({ code });
+  return c.json({ status: "pending" });
 });
 
-admin.delete("/invites/:code", async (c) => {
-  await c.env.DB.prepare("DELETE FROM invites WHERE code = ?1").bind(c.req.param("code")).run();
+admin.delete("/roles/:email", async (c) => {
+  await c.env.DB.prepare("DELETE FROM role_grants WHERE email = ?1").bind(decodeURIComponent(c.req.param("email")).toLowerCase()).run();
   return c.json({ ok: true });
 });
 

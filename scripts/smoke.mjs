@@ -1,5 +1,8 @@
 // 로컬 개발 서버(AI_MOCK=1)에 대해 주요 흐름을 실제로 호출해 보는 점검 스크립트.
 // 실행: npm run dev 를 켠 상태에서  node scripts/smoke.mjs [http://localhost:5173]
+// 내 로컬 데이터와 섞지 않으려면:
+//   STATE_DIR=.wrangler/smoke npx wrangler d1 migrations apply DB --local --persist-to .wrangler/smoke
+//   STATE_DIR=.wrangler/smoke npx vite --port 5174   그리고   STATE_DIR=.wrangler/smoke node scripts/smoke.mjs http://localhost:5174
 
 import { execSync } from "node:child_process";
 
@@ -8,8 +11,11 @@ const stamp = Date.now().toString(36);
 let failures = 0;
 
 /** 로컬 D1에 SQL 실행 (테스트 준비용) */
+// STATE_DIR을 주면 그 로컬 저장소에 실행한다(개발 서버도 같은 STATE_DIR로 켜야 한다).
+const PERSIST = process.env.STATE_DIR ? ` --persist-to "${process.env.STATE_DIR}"` : "";
+
 function localSql(sql) {
-  execSync(`npx wrangler d1 execute DB --local --command "${sql}"`, { stdio: "ignore" });
+  execSync(`npx wrangler d1 execute DB --local${PERSIST} --command "${sql}"`, { stdio: "ignore" });
 }
 
 // 여러 번 돌려도 같은 조건이 되도록 시도 제한 기록과 분석 캐시를 비운다.
@@ -19,7 +25,7 @@ localSql("DELETE FROM extraction_cache");
 function client() {
   let cookie = "";
   return async function call(method, path, body, extra = {}) {
-    const headers = { "x-recipegt": "1", ...(extra.headers ?? {}) };
+    const headers = { "x-recipong": "1", ...(extra.headers ?? {}) };
     if (cookie) headers.cookie = cookie;
     let payload;
     if (body instanceof Uint8Array) payload = body;
@@ -60,6 +66,12 @@ function check(name, ok, detail) {
   }
 }
 
+/** 시험 모드(MAIL_MOCK=1)에서 응답에 담겨 오는 인증 링크로 이메일을 인증한다 */
+async function verifyVia(call, devLink) {
+  const token = devLink ? new URL(devLink).searchParams.get("token") : "";
+  return call("POST", "/api/auth/verify", { token });
+}
+
 const admin = client();
 const member = client();
 const friend = client();
@@ -68,6 +80,20 @@ const anon = client();
 console.log("가입과 로그인");
 let r = await admin("POST", "/api/auth/signup", { email: `admin-${stamp}@test.dev`, password: "password123", name: "관리자" });
 check("관리자 가입", r.status === 200, r.data);
+check("가입하면 인증 메일 (시험 모드 링크)", r.data.verifyRequired === true && r.data.devLink?.includes("/verify?token="), r.data);
+const adminLink = r.data.devLink;
+r = await admin("GET", "/api/recipes");
+check("인증 전에는 앱 기능 막힘", r.status === 403 && r.data.error.code === "unverified", r.data);
+r = await admin("POST", "/api/auth/verify/resend");
+check("인증 메일 다시 보내기는 1분에 한 번", r.status === 429, r.data);
+r = await admin("POST", "/api/auth/verify", { token: "wrong-token" });
+check("잘못된 인증 링크 거절", r.status === 400 && r.data.error.code === "bad_token", r.data);
+r = await verifyVia(admin, adminLink);
+check("인증 링크로 인증", r.status === 200, r.data);
+r = await verifyVia(admin, adminLink);
+check("쓴 인증 링크는 다시 못 씀", r.status === 400, r.data);
+r = await admin("GET", "/api/recipes");
+check("인증 후 앱 기능 열림", r.status === 200, r.data);
 r = await admin("GET", "/api/me");
 if (r.data.me?.user.role !== "admin") {
   // 이미 다른 관리자가 있는 DB면 테스트 계정을 관리자로 올린다.
@@ -82,6 +108,8 @@ check("점검용 한도 설정", r.data.policy?.member.ai === 30, r.data);
 
 r = await member("POST", "/api/auth/signup", { email: `member-${stamp}@test.dev`, password: "password123", name: "일반" });
 check("일반 가입", r.status === 200, r.data);
+r = await verifyVia(member, r.data.devLink);
+check("일반 계정 인증", r.status === 200, r.data);
 r = await member("GET", "/api/me");
 check("일반 계정은 member + 한도 있음", r.data.me?.user.role === "member" && r.data.me.limits?.ai > 0 && !r.data.me.unlimited, r.data);
 
@@ -97,18 +125,44 @@ r = await fetch(BASE + "/api/auth/logout", { method: "POST" });
 check("커스텀 헤더 없는 요청(CSRF) 거절", r.status === 403);
 
 if (firstIsAdmin) {
-  console.log("초대 코드로 지인 가입");
-  r = await admin("POST", "/api/admin/invites", { note: "테스트", maxUses: 1, expiresDays: 7 });
-  check("초대 코드 생성", r.status === 200 && /^[A-Z2-9]{8}$/.test(r.data.code), r.data);
-  const code = r.data.code;
-  r = await friend("POST", "/api/auth/signup", { email: `friend-${stamp}@test.dev`, password: "password123", name: "지인", invite: code.toLowerCase() });
-  check("초대 코드로 가입 → 지인", r.status === 200 && r.data.inviteAccepted === true, r.data);
+  console.log("이메일로 권한 바꾸기");
+  // 1) 아직 가입 전인 이메일은 예약해 두었다가 가입·인증 때 적용
+  r = await admin("POST", "/api/admin/roles", { email: `friend-${stamp}@test.dev`, role: "friend" });
+  check("가입 전 이메일은 예약", r.status === 200 && r.data.status === "pending", r.data);
+  r = await friend("POST", "/api/auth/signup", { email: `friend-${stamp}@test.dev`, password: "password123", name: "지인" });
+  const friendLink = r.data.devLink;
   r = await friend("GET", "/api/me");
-  check("지인은 한도 없음", r.data.me?.user.role === "friend" && r.data.me.unlimited === true && r.data.me.limits === null, r.data);
-  r = await anon("POST", "/api/auth/signup", { email: `late-${stamp}@test.dev`, password: "password123", invite: code });
-  check("다 쓴 초대 코드는 일반 가입으로", r.status === 200 && r.data.inviteRejected === true, r.data);
+  check("인증 전에는 예약 권한이 아직 적용 안 됨", r.data.me?.user.role === "member", r.data.me?.user);
+  await verifyVia(friend, friendLink);
+  r = await friend("GET", "/api/me");
+  check("인증하면 예약한 지인 권한 적용", r.data.me?.user.role === "friend" && r.data.me.unlimited === true && r.data.me.limits === null, r.data);
+  check("지인은 한도 없음", r.data.me?.limits === null, r.data.me);
+  r = await admin("GET", "/api/admin/overview");
+  check("적용된 예약은 목록에서 사라짐", !r.data.grants.some((g) => g.email === `friend-${stamp}@test.dev`), r.data.grants);
+
+  // 2) 이미 가입한 계정은 바로 바뀜
+  r = await anon("POST", "/api/auth/signup", { email: `late-${stamp}@test.dev`, password: "password123" });
+  await verifyVia(anon, r.data.devLink);
+  r = await admin("POST", "/api/admin/roles", { email: `LATE-${stamp}@test.dev`, role: "friend" });
+  check("가입한 이메일은 바로 지인으로 (대소문자 무시)", r.data.status === "updated", r.data);
+  r = await anon("GET", "/api/me");
+  check("바로 적용됨", r.data.me?.user.role === "friend", r.data.me?.user);
+  await admin("POST", "/api/admin/roles", { email: `late-${stamp}@test.dev`, role: "member" });
+  r = await anon("GET", "/api/me");
+  check("다시 일반으로", r.data.me?.user.role === "member", r.data.me?.user);
+  r = await member("POST", "/api/admin/roles", { email: `member-${stamp}@test.dev`, role: "friend" });
+  check("일반 계정은 권한을 못 바꿈", r.status === 403, r.data);
+  r = await admin("POST", "/api/admin/roles", { email: `admin-${stamp}@test.dev`, role: "member" });
+  check("내 관리자 권한은 못 뺌", r.status === 400, r.data);
+
+  // 3) 예약 지우기
+  await admin("POST", "/api/admin/roles", { email: `someone-${stamp}@test.dev`, role: "friend" });
+  await admin("DELETE", `/api/admin/roles/${encodeURIComponent(`someone-${stamp}@test.dev`)}`);
+  r = await admin("GET", "/api/admin/overview");
+  check("예약 지우기", !r.data.grants.some((g) => g.email === `someone-${stamp}@test.dev`), r.data.grants);
 } else {
   r = await friend("POST", "/api/auth/signup", { email: `friend-${stamp}@test.dev`, password: "password123", name: "지인" });
+  await verifyVia(friend, r.data.devLink);
 }
 
 console.log("레시피 가져오기");
@@ -258,6 +312,23 @@ if (firstIsAdmin) {
   check("한도 설정 저장", r.data.policy?.member.ai === 50 && r.data.policy.member.import === 3, r.data);
   await admin("PUT", "/api/admin/policy", { policy: {} });
 }
+
+console.log("비밀번호 찾기");
+r = await anon("POST", "/api/auth/forgot", { email: `member-${stamp}@test.dev` });
+check("재설정 메일 (시험 모드 링크)", r.status === 200 && r.data.devLink?.includes("/reset?token="), r.data);
+const resetToken = r.data.devLink ? new URL(r.data.devLink).searchParams.get("token") : "";
+r = await anon("POST", "/api/auth/forgot", { email: `nobody-${stamp}@test.dev` });
+check("없는 이메일도 같은 응답", r.status === 200 && r.data.ok === true && !r.data.devLink, r.data);
+r = await anon("POST", "/api/auth/reset", { token: resetToken, password: "newpass1234" });
+check("새 비밀번호 정하기", r.status === 200, r.data);
+r = await member("GET", "/api/recipes");
+check("재설정하면 다른 기기 로그인은 풀림", r.status === 401, r.data);
+r = await anon("POST", "/api/auth/reset", { token: resetToken, password: "another1234" });
+check("쓴 재설정 링크는 다시 못 씀", r.status === 400, r.data);
+r = await member("POST", "/api/auth/login", { email: `member-${stamp}@test.dev`, password: "password123" });
+check("예전 비밀번호는 안 됨", r.status === 401, r.data);
+r = await member("POST", "/api/auth/login", { email: `member-${stamp}@test.dev`, password: "newpass1234" });
+check("새 비밀번호로 로그인", r.status === 200, r.data);
 
 console.log("정리");
 r = await member("DELETE", `/api/recipes/${recipeId}`);

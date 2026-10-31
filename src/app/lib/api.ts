@@ -21,7 +21,7 @@ async function request<T>(method: Method, path: string, body?: unknown): Promise
   try {
     res = await fetch(path, {
       method,
-      headers: { "x-recipegt": "1", ...(body !== undefined ? { "content-type": "application/json" } : {}) },
+      headers: { "x-recipong": "1", ...(body !== undefined ? { "content-type": "application/json" } : {}) },
       body: body !== undefined ? JSON.stringify(body) : undefined,
       credentials: "same-origin",
     });
@@ -44,13 +44,17 @@ async function toError(res: Response): Promise<ApiError> {
 export const api = {
   config: () => request<AppConfig>("GET", "/api/config"),
   me: () => request<{ me: MeResponse | null }>("GET", "/api/me").then((r) => r.me),
-  signup: (body: { email: string; password: string; name: string; invite?: string; turnstile?: string; website?: string }) =>
-    request<{ ok: true; inviteAccepted: boolean; inviteRejected: boolean }>("POST", "/api/auth/signup", body),
+  signup: (body: { email: string; password: string; name: string; turnstile?: string; website?: string }) =>
+    request<{ ok: true; verifyRequired: boolean; devLink?: string; mailError?: string }>("POST", "/api/auth/signup", body),
+  verifyEmail: (token: string) => request<{ ok: true }>("POST", "/api/auth/verify", { token }),
+  resendVerification: () => request<{ ok: true; devLink?: string; already?: boolean }>("POST", "/api/auth/verify/resend"),
+  changeEmail: (email: string) => request<{ ok: true; devLink?: string }>("POST", "/api/me/email", { email }),
+  forgotPassword: (email: string) => request<{ ok: true; devLink?: string }>("POST", "/api/auth/forgot", { email }),
+  resetPassword: (token: string, password: string) => request<{ ok: true }>("POST", "/api/auth/reset", { token, password }),
   login: (email: string, password: string) => request<{ ok: true }>("POST", "/api/auth/login", { email, password }),
   logout: () => request<{ ok: true }>("POST", "/api/auth/logout"),
   rename: (name: string) => request<{ ok: true }>("PATCH", "/api/me", { name }),
   changePassword: (current: string, next: string) => request<{ ok: true }>("POST", "/api/me/password", { current, next }),
-  redeemInvite: (code: string) => request<{ ok: true; already?: boolean }>("POST", "/api/me/invite", { code }),
   deleteAccount: (password: string) => request<{ ok: true }>("DELETE", "/api/me", { password }),
 
   recipes: () => request<{ recipes: RecipeSummary[] }>("GET", "/api/recipes").then((r) => r.recipes),
@@ -82,7 +86,7 @@ export const api = {
   uploadImage: async (blob: Blob): Promise<string> => {
     let res: Response;
     try {
-      res = await fetch("/api/images", { method: "POST", headers: { "x-recipegt": "1", "content-type": blob.type }, body: blob, credentials: "same-origin" });
+      res = await fetch("/api/images", { method: "POST", headers: { "x-recipong": "1", "content-type": blob.type }, body: blob, credentials: "same-origin" });
     } catch {
       throw new ApiError(0, "network", "인터넷 연결을 확인해 주세요.");
     }
@@ -92,11 +96,13 @@ export const api = {
 
   admin: {
     overview: () => request<AdminOverview>("GET", "/api/admin/overview"),
-    updateUser: (id: number, body: { role?: Role; status?: UserStatus; reason?: string }) => request<{ ok: true }>("PATCH", `/api/admin/users/${id}`, body),
+    updateUser: (id: number, body: { role?: Role; status?: UserStatus; reason?: string; verified?: boolean }) => request<{ ok: true }>("PATCH", `/api/admin/users/${id}`, body),
     resetPassword: (id: number) => request<{ password: string }>("POST", `/api/admin/users/${id}/reset-password`),
     deleteUser: (id: number) => request<{ ok: true }>("DELETE", `/api/admin/users/${id}`),
-    createInvite: (body: { note: string; maxUses: number; expiresDays: number | null }) => request<{ code: string }>("POST", "/api/admin/invites", body),
-    deleteInvite: (code: string) => request<{ ok: true }>("DELETE", `/api/admin/invites/${code}`),
+    /** 이메일로 권한 바꾸기. 아직 가입 전이면 예약(pending) */
+    setRoleByEmail: (email: string, role: Role) =>
+      request<{ status: "updated" | "pending"; name?: string; previous?: Role }>("POST", "/api/admin/roles", { email, role }),
+    deleteGrant: (email: string) => request<{ ok: true }>("DELETE", `/api/admin/roles/${encodeURIComponent(email)}`),
     savePolicy: (policy: Policy) => request<{ policy: Policy }>("PUT", "/api/admin/policy", { policy }),
   },
 };
@@ -111,7 +117,7 @@ export async function runImport(
   try {
     res = await fetch("/api/import", {
       method: "POST",
-      headers: { "x-recipegt": "1", "content-type": "application/json" },
+      headers: { "x-recipong": "1", "content-type": "application/json" },
       body: JSON.stringify(body),
       credentials: "same-origin",
       signal,

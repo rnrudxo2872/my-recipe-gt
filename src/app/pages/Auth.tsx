@@ -1,21 +1,23 @@
 import { useQueryClient } from "@tanstack/react-query";
 import { useEffect, useRef, useState, type FormEvent } from "react";
-import { Link, useLocation, useSearchParams } from "react-router";
+import { Link, useLocation } from "react-router";
 import { api, ApiError } from "../lib/api";
 import { useConfig, useDocumentTitle } from "../lib/hooks";
 import { useToast } from "../lib/toast";
+import { rememberDevLink } from "./Verify";
 
 function Brand() {
   return (
     <Link to="/" className="brand">
       <img src="/icons/logo-96.png" alt="" />
-      <span>레시피GT</span>
+      <span>레시퐁</span>
     </Link>
   );
 }
 
 export function Login() {
   useDocumentTitle("로그인");
+  const config = useConfig();
   const qc = useQueryClient();
   const location = useLocation();
   const [email, setEmail] = useState("");
@@ -64,7 +66,11 @@ export function Login() {
         처음이라면 <Link to={`/signup${location.search}`}>가입하기</Link>
       </p>
       <p className="help" style={{ textAlign: "center", marginTop: 12 }}>
-        비밀번호를 잊었다면 관리자에게 임시 비밀번호를 받아 주세요.
+        {config.data?.passwordReset ? (
+          <Link to="/forgot">비밀번호를 잊었나요?</Link>
+        ) : (
+          "비밀번호를 잊었다면 관리자에게 임시 비밀번호를 받아 주세요."
+        )}
       </p>
     </div>
   );
@@ -108,9 +114,8 @@ export function Signup() {
   useDocumentTitle("가입하기");
   const qc = useQueryClient();
   const toast = useToast();
-  const [params] = useSearchParams();
   const config = useConfig();
-  const [form, setForm] = useState({ name: "", email: "", password: "", invite: params.get("invite") ?? "", website: "" });
+  const [form, setForm] = useState({ name: "", email: "", password: "", website: "" });
   const [token, setToken] = useState("");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
@@ -126,9 +131,9 @@ export function Signup() {
     setBusy(true);
     setError("");
     try {
-      const res = await api.signup({ ...form, invite: form.invite.trim() || undefined, turnstile: token || undefined });
-      if (res.inviteAccepted) toast.show("지인 초대 코드를 확인했어요. 사용량 제한 없이 쓸 수 있어요.");
-      if (res.inviteRejected) toast.show("초대 코드를 쓸 수 없어서 일반 계정으로 가입했어요. 내 정보에서 다시 넣을 수 있어요.", { tone: "error" });
+      const res = await api.signup({ ...form, turnstile: token || undefined });
+      rememberDevLink(res.devLink);
+      if (res.mailError) toast.show(res.mailError, { tone: "error" });
       // me가 바뀌면 /signup 경로가 next(내부 주소만)로 보내 준다.
       await qc.invalidateQueries({ queryKey: ["me"] });
     } catch (err) {
@@ -160,11 +165,6 @@ export function Signup() {
           <span className="label">비밀번호</span>
           <input className="input" type="password" autoComplete="new-password" minLength={8} required value={form.password} onChange={set("password")} />
           <span className="help">8자 이상</span>
-        </label>
-        <label className="field">
-          <span className="label">초대 코드 (선택)</span>
-          <input className="input" autoCapitalize="characters" autoComplete="off" value={form.invite} onChange={set("invite")} />
-          <span className="help">지인에게 받은 코드가 있으면 넣어 주세요. 사용량 제한 없이 쓸 수 있어요.</span>
         </label>
         <label className="hp" aria-hidden="true">
           웹사이트

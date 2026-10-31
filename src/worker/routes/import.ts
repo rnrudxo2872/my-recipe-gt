@@ -7,7 +7,7 @@ import { detectSource, type DetectedSource } from "../../shared/links";
 import { isUsableRecipe, normalizeRecipe, type RecipeContent, type SourceType } from "../../shared/recipe";
 import { extractTextTask, extractVideoTask } from "../ai/prompts";
 import { runAi, videoReady } from "../ai/providers";
-import { requireUser } from "../auth";
+import { requireVerified } from "../auth";
 import { ApiError, readJson, type AppEnv, type HonoEnv, type SessionUser } from "../env";
 import { fetchInstagram } from "../extract/instagram";
 import { looksLikeRecipe } from "../extract/text";
@@ -236,7 +236,7 @@ async function runImport(env: AppEnv, user: SessionUser, input: ImportInput, sen
 }
 
 export const importer = new Hono<HonoEnv>();
-importer.use("*", requireUser);
+importer.use("*", requireVerified);
 
 importer.post("/", async (c) => {
   const input = await readJson<ImportInput>(c);

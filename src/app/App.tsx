@@ -1,11 +1,12 @@
 import { RotateCcw, WifiOff } from "lucide-react";
 import { Navigate, Outlet, Route, Routes, useLocation, useMatch } from "react-router";
 import { Sidebar, TabBar } from "./components/Nav";
-import { useMe, useOnline } from "./lib/hooks";
+import { useConfig, useMe, useOnline } from "./lib/hooks";
 import { Add } from "./pages/Add";
 import { Admin } from "./pages/Admin";
 import { Cook } from "./pages/Cook";
 import { Edit } from "./pages/Edit";
+import { Forgot, Reset } from "./pages/Forgot";
 import { Fridge } from "./pages/Fridge";
 import { Home } from "./pages/Home";
 import { Landing } from "./pages/Landing";
@@ -14,6 +15,7 @@ import { Me } from "./pages/Me";
 import { NotFound } from "./pages/NotFound";
 import { RecipePage } from "./pages/Recipe";
 import { Share } from "./pages/Share";
+import { VerifyPending, VerifyToken } from "./pages/Verify";
 
 export function Splash() {
   return (
@@ -53,8 +55,9 @@ function LoginRedirect() {
 
 export function App() {
   const me = useMe();
+  const config = useConfig();
 
-  if (me.isPending) return <Splash />;
+  if (me.isPending || config.isPending) return <Splash />;
   if (me.isError) {
     return (
       <div className="empty" style={{ minHeight: "100dvh", justifyContent: "center" }}>
@@ -75,7 +78,21 @@ export function App() {
         <Route path="/" element={<Landing />} />
         <Route path="/login" element={<Login />} />
         <Route path="/signup" element={<Signup />} />
+        <Route path="/verify" element={<VerifyToken />} />
+        <Route path="/forgot" element={<Forgot />} />
+        <Route path="/reset" element={<Reset />} />
         <Route path="*" element={<LoginRedirect />} />
+      </Routes>
+    );
+  }
+
+  // 이메일 인증 전에는 인증 화면만 보인다.
+  if (!me.data.user.emailVerified && config.data?.emailVerification) {
+    return (
+      <Routes>
+        <Route path="/verify" element={<VerifyToken />} />
+        <Route path="/reset" element={<Reset />} />
+        <Route path="*" element={<VerifyPending />} />
       </Routes>
     );
   }
@@ -83,6 +100,8 @@ export function App() {
   return (
     <Routes>
       <Route path="/r/:id/cook" element={<Cook />} />
+      <Route path="/verify" element={<VerifyToken />} />
+      <Route path="/reset" element={<Reset />} />
       <Route element={<Shell />}>
         <Route index element={<Home />} />
         <Route path="add" element={<Add />} />
@@ -95,6 +114,7 @@ export function App() {
         <Route path="admin" element={me.data.user.role === "admin" ? <Admin /> : <Navigate to="/" replace />} />
         <Route path="login" element={<AfterLogin />} />
         <Route path="signup" element={<AfterLogin />} />
+        <Route path="forgot" element={<Navigate to="/" replace />} />
         <Route path="*" element={<NotFound />} />
       </Route>
     </Routes>

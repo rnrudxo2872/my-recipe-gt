@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""레시피GT 인스타그램 도우미 (폰서버용)
+"""레시퐁 인스타그램 도우미 (폰서버용)
 
 인스타그램은 공식 경로가 없고 클라우드 IP를 잘 막아서, 집에 있는 폰에서 캡션만 대신 읽어 준다.
 영상은 받지 않고 캡션·썸네일 주소만 조회하므로 몇 초면 끝나고 폰 부담이 작다.
@@ -98,10 +98,10 @@ class Handler(BaseHTTPRequestHandler):
 
 def main() -> None:
     global TOKEN, COOKIES
-    parser = argparse.ArgumentParser(description="레시피GT 인스타그램 캡션 도우미")
+    parser = argparse.ArgumentParser(description="레시퐁 인스타그램 캡션 도우미")
     parser.add_argument("--port", type=int, default=8790)
     parser.add_argument("--host", default="127.0.0.1", help="터널(cloudflared)만 접근하도록 기본은 127.0.0.1")
-    parser.add_argument("--token", required=True, help="레시피GT의 INSTA_HELPER_TOKEN과 같은 값")
+    parser.add_argument("--token", required=True, help="레시퐁의 INSTA_HELPER_TOKEN과 같은 값")
     parser.add_argument("--cookies", help="(선택) 로그인이 필요한 게시물용 쿠키 파일(Netscape 형식)")
     opts = parser.parse_args()
     TOKEN = opts.token

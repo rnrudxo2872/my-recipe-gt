@@ -9,3 +9,4 @@ dist/
 test-results/
 screenshots/
 worker-configuration.d.ts
+__pycache__/

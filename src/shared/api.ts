@@ -50,6 +50,8 @@ export interface PublicUser {
   role: Role;
   status: UserStatus;
   statusReason: string | null;
+  /** 이메일 인증을 마쳤는지 */
+  emailVerified: boolean;
   createdAt: number;
 }
 
@@ -68,6 +70,10 @@ export interface AppConfig {
   turnstileSiteKey: string;
   instaHelper: boolean;
   aiReady: boolean;
+  /** 가입 후 이메일 인증을 받아야 하는지 (메일 발송이 설정됐을 때) */
+  emailVerification: boolean;
+  /** 비밀번호 찾기 메일을 보낼 수 있는지 */
+  passwordReset: boolean;
 }
 
 export type ImportStage = "start" | "cache" | "meta" | "description" | "video" | "caption" | "page" | "text" | "image" | "save";
@@ -113,6 +119,7 @@ export interface AdminOverview {
   global: Record<string, number>;
   policy: Policy;
   events: { id: number; userId: number | null; userName: string | null; kind: string; detail: string; createdAt: number }[];
-  invites: { code: string; note: string; maxUses: number; uses: number; createdAt: number; expiresAt: number | null }[];
-  providers: { gemini: boolean; groq: boolean; workersAi: boolean; openrouter: boolean; youtubeApi: boolean; instaHelper: boolean; turnstile: boolean; mock: boolean };
+  /** 아직 가입하지 않은 이메일에 미리 정해 둔 권한 */
+  grants: { email: string; role: Role; createdAt: number }[];
+  providers: { mail: "resend" | "mock" | "off"; gemini: boolean; groq: boolean; workersAi: boolean; openrouter: boolean; youtubeApi: boolean; instaHelper: boolean; turnstile: boolean; mock: boolean };
 }

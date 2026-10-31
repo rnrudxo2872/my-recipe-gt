@@ -1,6 +1,6 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { ChevronRight, Download, KeyRound, LogOut, Pencil, Shield, Ticket, TriangleAlert, UserX } from "lucide-react";
-import { useEffect, useState, type FormEvent } from "react";
+import { Check, ChevronRight, Copy, Download, KeyRound, LogOut, Pencil, Shield, TriangleAlert, UserX } from "lucide-react";
+import { useEffect, useState } from "react";
 import { Link } from "react-router";
 import type { QuotaKind } from "../../shared/api";
 import { Sheet } from "../components/Sheet";
@@ -42,7 +42,7 @@ export function Me() {
   const qc = useQueryClient();
   const toast = useToast();
   const [sheet, setSheet] = useState<null | "name" | "password" | "delete">(null);
-  const [code, setCode] = useState("");
+  const [copied, setCopied] = useState(false);
   const install = useInstallPrompt();
   const standalone = typeof window !== "undefined" && window.matchMedia("(display-mode: standalone)").matches;
   const isIos = typeof navigator !== "undefined" && /iphone|ipad|ipod/i.test(navigator.userAgent);
@@ -50,16 +50,6 @@ export function Me() {
   useEffect(() => {
     refetch();
   }, [refetch]);
-
-  const redeem = useMutation({
-    mutationFn: () => api.redeemInvite(code),
-    onSuccess: async () => {
-      setCode("");
-      await qc.invalidateQueries({ queryKey: ["me"] });
-      toast.show("지인 계정이 됐어요. 이제 사용량 제한 없이 쓸 수 있어요.");
-    },
-    onError: (e) => toast.error(e),
-  });
 
   const logout = useMutation({
     mutationFn: api.logout,
@@ -92,7 +82,7 @@ export function Me() {
           <TriangleAlert aria-hidden="true" />
           <span>
             <strong>사용량이 많아 하루 한도가 줄어든 계정이에요.</strong>
-            {user.statusReason ? ` (${user.statusReason})` : ""} 지인이라면 초대 코드를 넣거나 관리자에게 알려 주세요.
+            {user.statusReason ? ` (${user.statusReason})` : ""} 지인이라면 관리자에게 가입한 이메일을 알려 주세요.
           </span>
         </div>
       )}
@@ -141,23 +131,26 @@ export function Me() {
       )}
 
       {user.role === "member" && (
-        <form
-          className="card"
-          onSubmit={(e: FormEvent) => {
-            e.preventDefault();
-            if (code.trim()) redeem.mutate();
-          }}
-        >
-          <h2>초대 코드</h2>
-          <p className="card-sub">지인에게 받은 코드를 넣으면 사용량 제한 없이 쓸 수 있어요.</p>
-          <div className="inline-form">
-            <input className="input" value={code} autoCapitalize="characters" placeholder="코드 8자리" aria-label="초대 코드" onChange={(e) => setCode(e.target.value)} />
-            <button type="submit" className="btn" disabled={!code.trim() || redeem.isPending}>
-              <Ticket aria-hidden="true" />
-              등록
-            </button>
-          </div>
-        </form>
+        <div className="card">
+          <h2>지인이라면</h2>
+          <p className="card-sub">관리자에게 가입한 이메일을 알려 주세요. 관리자가 지인으로 바꾸면 사용량 제한 없이 쓸 수 있어요.</p>
+          <button
+            type="button"
+            className="btn btn-block"
+            onClick={() =>
+              navigator.clipboard
+                ?.writeText(user.email)
+                .then(() => {
+                  setCopied(true);
+                  toast.show("이메일을 복사했어요. 관리자에게 보내 주세요.");
+                })
+                .catch(() => toast.show(user.email))
+            }
+          >
+            {copied ? <Check aria-hidden="true" /> : <Copy aria-hidden="true" />}
+            {user.email} 복사
+          </button>
+        </div>
       )}
 
       {!standalone && (install || isIos) && (

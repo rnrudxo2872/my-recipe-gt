@@ -69,7 +69,7 @@ export function Home() {
         <h1 className="sr-only">내 레시피</h1>
         <span className="brand">
           <img src="/icons/logo-96.png" alt="" />
-          <span>레시피GT</span>
+          <span>레시퐁</span>
         </span>
       </div>
 

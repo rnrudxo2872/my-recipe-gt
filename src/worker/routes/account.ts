@@ -10,14 +10,15 @@ import {
   destroySession,
   hashPassword,
   publicOnly,
-  redeemInvite,
+  applyRoleGrant,
   requireUser,
   verifyPassword,
   verifyTurnstile,
 } from "../auth";
 import { ApiError, clientIp, readJson, type HonoEnv, type SessionUser } from "../env";
 import { deleteUnusedImagesOf } from "../images";
-import { getPolicy, getUsage, limitAttempts, limitsFor, isUnlimited } from "../quota";
+import { consumeEmailToken, mailMode, sendReset, sendVerification, verificationRequired } from "../mail";
+import { bump, getPolicy, getUsage, limitAttempts, limitsFor, isUnlimited } from "../quota";
 
 const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -46,7 +47,7 @@ export async function buildMe(c: { env: HonoEnv["Bindings"] }, user: SessionUser
 export const account = new Hono<HonoEnv>();
 
 account.post("/auth/signup", async (c) => {
-  const body = await readJson<{ email?: string; password?: string; name?: string; invite?: string; turnstile?: string; website?: string }>(c);
+  const body = await readJson<{ email?: string; password?: string; name?: string; turnstile?: string; website?: string }>(c);
   const ip = clientIp(c);
   // 사람 눈에 안 보이는 칸. 채워져 있으면 자동 가입 봇이다.
   if (body.website) throw new ApiError(400, "bad_request", "가입할 수 없어요.");
@@ -60,9 +61,11 @@ account.post("/auth/signup", async (c) => {
   const exists = await c.env.DB.prepare("SELECT 1 FROM users WHERE email = ?1").bind(email).first();
   if (exists) throw new ApiError(409, "email_taken", "이미 가입된 이메일이에요. 로그인해 주세요.");
 
+  const verify = verificationRequired(c.env);
   const admins = adminEmails(c.env);
   let role: "admin" | "member" = "member";
-  if (admins.includes(email)) role = "admin";
+  // 관리자 이메일은 인증을 마친 뒤에 관리자가 된다(남이 먼저 그 주소로 가입해도 관리자가 되지 않게).
+  if (admins.includes(email) && !verify) role = "admin";
   else if (!admins.length) {
     // 관리자 이메일을 정하지 않았으면 이 앱의 맨 첫 가입자만 관리자가 된다(관리자가 없어져도 다음 가입자가 되지 않게).
     const anyUser = await c.env.DB.prepare("SELECT 1 FROM users LIMIT 1").first();
@@ -71,15 +74,117 @@ account.post("/auth/signup", async (c) => {
   const hash = await hashPassword(body.password!, c.env);
   const now = Date.now();
   const res = await c.env.DB.prepare(
-    "INSERT INTO users (email, name, password_hash, role, signup_ip, created_at, last_seen_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?6) RETURNING id",
+    "INSERT INTO users (email, name, password_hash, role, signup_ip, created_at, last_seen_at, email_verified_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?6, NULL) RETURNING id",
   )
     .bind(email, name, hash, role, ip, now)
     .first<{ id: number }>();
   const userId = res!.id;
-  let inviteAccepted = false;
-  if (body.invite && role === "member") inviteAccepted = await redeemInvite(c.env.DB, body.invite, userId);
+  // 이메일 인증을 쓰지 않을 때만 가입 즉시 적용한다. 인증을 쓰면 인증을 마칠 때 적용한다.
+  if (!verify && role === "member") await applyRoleGrant(c.env.DB, userId, email);
   await createSession(c, userId);
-  return c.json({ ok: true, inviteAccepted, inviteRejected: Boolean(body.invite) && role === "member" && !inviteAccepted });
+
+  // 인증 메일. 못 보내도 가입은 끝난 것이고, 인증 화면에서 다시 보낼 수 있다.
+  let devLink: string | undefined;
+  let mailError: string | undefined;
+  if (verify) {
+    try {
+      devLink = await sendVerification(c, { id: userId, email, name });
+    } catch (e) {
+      mailError = e instanceof ApiError ? e.message : "인증 메일을 보내지 못했어요. 잠시 뒤에 다시 보내 주세요.";
+    }
+  }
+  return c.json({ ok: true, verifyRequired: verify, devLink, mailError });
+});
+
+/** 메일의 인증 링크를 눌렀을 때 */
+account.post("/auth/verify", async (c) => {
+  const body = await readJson<{ token?: string }>(c);
+  await limitAttempts(c.env.DB, `verify-ip:${clientIp(c)}`, 15 * 60 * 1000, 30, "시도가 너무 많아요. 잠시 뒤에 다시 시도해 주세요.");
+  const userId = await consumeEmailToken(c.env.DB, String(body.token ?? ""), "verify");
+  if (!userId) throw new ApiError(400, "bad_token", "인증 링크가 만료됐거나 이미 쓴 링크예요. 앱에서 인증 메일을 다시 보내 주세요.");
+  const user = await c.env.DB.prepare("SELECT email, role FROM users WHERE id = ?1").bind(userId).first<{ email: string; role: string }>();
+  await c.env.DB.prepare("UPDATE users SET email_verified_at = COALESCE(email_verified_at, ?1) WHERE id = ?2").bind(Date.now(), userId).run();
+  if (user) {
+    // 관리자가 이 이메일에 미리 정해 둔 권한(예: 지인)을 이제 적용한다.
+    await applyRoleGrant(c.env.DB, userId, user.email);
+    if (user.role !== "admin" && adminEmails(c.env).includes(user.email)) {
+      await c.env.DB.prepare("UPDATE users SET role = 'admin' WHERE id = ?1").bind(userId).run();
+    }
+  }
+  return c.json({ ok: true });
+});
+
+/** 인증 메일 다시 보내기 */
+account.post("/auth/verify/resend", requireUser, async (c) => {
+  const user = c.get("user");
+  if (user.emailVerified || !verificationRequired(c.env)) return c.json({ ok: true, already: true });
+  const devLink = await sendVerification(c, user);
+  return c.json({ ok: true, devLink });
+});
+
+/** 가입할 때 이메일을 잘못 적었으면 인증 전에 고칠 수 있다 */
+account.post("/me/email", requireUser, async (c) => {
+  const user = c.get("user");
+  if (user.emailVerified) throw new ApiError(400, "already_verified", "인증을 마친 이메일은 여기서 바꿀 수 없어요.");
+  const body = await readJson<{ email?: string }>(c);
+  const email = String(body.email ?? "").trim().toLowerCase();
+  if (!EMAIL.test(email) || email.length > 120) throw new ApiError(400, "bad_email", "이메일 주소를 확인해 주세요.");
+  await limitAttempts(c.env.DB, `email-change:${user.id}`, 24 * 60 * 60 * 1000, 5, "오늘은 이메일을 더 바꿀 수 없어요. 내일 다시 시도해 주세요.");
+  const taken = await c.env.DB.prepare("SELECT 1 FROM users WHERE email = ?1 AND id != ?2").bind(email, user.id).first();
+  if (taken) throw new ApiError(409, "email_taken", "이미 가입된 이메일이에요.");
+  await c.env.DB.batch([
+    c.env.DB.prepare("UPDATE users SET email = ?1 WHERE id = ?2").bind(email, user.id),
+    // 예전 주소로 간 인증 링크는 더 쓰지 못하게
+    c.env.DB.prepare("DELETE FROM email_tokens WHERE user_id = ?1 AND kind = 'verify'").bind(user.id),
+  ]);
+  const devLink = await sendVerification(c, { ...user, email });
+  return c.json({ ok: true, devLink });
+});
+
+/** 비밀번호 찾기: 가입 여부와 상관없이 같은 응답을 준다(가입된 이메일을 알아내지 못하게). */
+account.post("/auth/forgot", async (c) => {
+  if (mailMode(c.env) === "off") {
+    throw new ApiError(503, "mail_off", "지금은 비밀번호 찾기 메일을 보낼 수 없어요. 관리자에게 임시 비밀번호를 받아 주세요.");
+  }
+  const body = await readJson<{ email?: string }>(c);
+  const email = String(body.email ?? "").trim().toLowerCase();
+  if (!EMAIL.test(email)) throw new ApiError(400, "bad_email", "이메일 주소를 확인해 주세요.");
+  await limitAttempts(c.env.DB, `forgot-ip:${clientIp(c)}`, 60 * 60 * 1000, 10, "요청이 너무 많아요. 1시간 뒤에 다시 시도해 주세요.");
+  const user = await c.env.DB.prepare("SELECT id, email, name, status FROM users WHERE email = ?1")
+    .bind(email)
+    .first<{ id: number; email: string; name: string; status: string }>();
+  let devLink: string | undefined;
+  if (user && user.status !== "blocked") {
+    // 같은 주소로는 1시간에 3통까지. 넘으면 조용히 보내지 않는다.
+    const { count } = await bump(c.env.DB, `forgot:${email}`, 60 * 60 * 1000);
+    if (count <= 3) devLink = await sendReset(c, user);
+  }
+  return c.json({ ok: true, devLink });
+});
+
+/** 메일의 재설정 링크에서 새 비밀번호를 정한다. 다른 기기의 로그인은 모두 풀린다. */
+account.post("/auth/reset", async (c) => {
+  const body = await readJson<{ token?: string; password?: string }>(c);
+  const password = String(body.password ?? "");
+  if (password.length < 8 || password.length > 200) throw new ApiError(400, "bad_password", "비밀번호는 8자 이상이어야 해요.");
+  await limitAttempts(c.env.DB, `reset-ip:${clientIp(c)}`, 15 * 60 * 1000, 20, "시도가 너무 많아요. 잠시 뒤에 다시 시도해 주세요.");
+  const userId = await consumeEmailToken(c.env.DB, String(body.token ?? ""), "reset");
+  if (!userId) throw new ApiError(400, "bad_token", "링크가 만료됐거나 이미 쓴 링크예요. 비밀번호 찾기를 다시 해 주세요.");
+  const user = await c.env.DB.prepare("SELECT status, email FROM users WHERE id = ?1").bind(userId).first<{ status: string; email: string }>();
+  if (!user || user.status === "blocked") throw new ApiError(403, "blocked", "이용이 차단된 계정이에요.");
+  // 재설정 메일을 받았으니 이메일 주인이 확인된 셈이다. 미리 정해 둔 권한이 있으면 적용한다.
+  await applyRoleGrant(c.env.DB, userId, user.email);
+  await c.env.DB.batch([
+    // 메일을 받았으니 이메일 주인인 것도 확인된 셈이다.
+    c.env.DB.prepare("UPDATE users SET password_hash = ?1, email_verified_at = COALESCE(email_verified_at, ?2) WHERE id = ?3").bind(
+      await hashPassword(password, c.env),
+      Date.now(),
+      userId,
+    ),
+    c.env.DB.prepare("DELETE FROM sessions WHERE user_id = ?1").bind(userId),
+  ]);
+  await createSession(c, userId);
+  return c.json({ ok: true });
 });
 
 account.post("/auth/login", async (c) => {
@@ -88,16 +193,18 @@ account.post("/auth/login", async (c) => {
   const email = String(body.email ?? "").trim().toLowerCase();
   await limitAttempts(c.env.DB, `login-ip:${ip}`, 15 * 60 * 1000, 30, "로그인 시도가 너무 많아요. 15분 뒤에 다시 시도해 주세요.");
   await limitAttempts(c.env.DB, `login:${email}`, 15 * 60 * 1000, 10, "로그인 시도가 너무 많아요. 15분 뒤에 다시 시도해 주세요.");
-  const row = await c.env.DB.prepare("SELECT id, password_hash, status, status_reason, role FROM users WHERE email = ?1")
+  const row = await c.env.DB.prepare("SELECT id, password_hash, status, status_reason, role, email_verified_at FROM users WHERE email = ?1")
     .bind(email)
-    .first<{ id: number; password_hash: string; status: string; status_reason: string | null; role: string }>();
+    .first<{ id: number; password_hash: string; status: string; status_reason: string | null; role: string; email_verified_at: number | null }>();
   if (!row || !(await verifyPassword(String(body.password ?? ""), row.password_hash, c.env))) {
     throw new ApiError(401, "bad_credentials", "이메일 또는 비밀번호가 맞지 않아요.");
   }
   if (row.status === "blocked") {
     throw new ApiError(403, "blocked", `이용이 차단된 계정이에요.${row.status_reason ? ` (${row.status_reason})` : ""}`);
   }
-  if (row.role !== "admin" && adminEmails(c.env).includes(email)) {
+  // 관리자 이메일이라도 인증을 마쳐야 관리자가 된다.
+  const verified = row.email_verified_at != null || !verificationRequired(c.env);
+  if (row.role !== "admin" && verified && adminEmails(c.env).includes(email)) {
     await c.env.DB.prepare("UPDATE users SET role = 'admin' WHERE id = ?1").bind(row.id).run();
   }
   await createSession(c, row.id);
@@ -132,17 +239,6 @@ account.post("/me/password", requireUser, async (c) => {
   }
   validateCredentials(user.email, body.next);
   await c.env.DB.prepare("UPDATE users SET password_hash = ?1 WHERE id = ?2").bind(await hashPassword(body.next!, c.env), user.id).run();
-  return c.json({ ok: true });
-});
-
-account.post("/me/invite", requireUser, async (c) => {
-  const body = await readJson<{ code?: string }>(c);
-  const user = c.get("user");
-  if (isUnlimited(user)) return c.json({ ok: true, already: true });
-  await limitAttempts(c.env.DB, `invite:${user.id}`, 60 * 60 * 1000, 10, "초대 코드 입력이 너무 많아요. 1시간 뒤에 다시 시도해 주세요.");
-  if (!(await redeemInvite(c.env.DB, String(body.code ?? ""), user.id))) {
-    throw new ApiError(400, "bad_invite", "쓸 수 없는 초대 코드예요. 코드를 다시 확인하거나 새 코드를 받아 주세요.");
-  }
   return c.json({ ok: true });
 });
 

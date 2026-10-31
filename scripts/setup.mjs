@@ -4,6 +4,7 @@
 // 사용법 (먼저 `npx wrangler login`):
 //   npm run setup
 //   npm run setup -- --admin me@example.com --gemini AIza... --groq gsk_... --youtube AIza...
+//                    --resend re_... --mail-from "레시퐁 <no-reply@내도메인.com>"
 
 import { execSync } from "node:child_process";
 import { randomBytes } from "node:crypto";
@@ -11,7 +12,7 @@ import { readFileSync, writeFileSync } from "node:fs";
 import { createInterface } from "node:readline/promises";
 
 const PLACEHOLDER = "00000000-0000-0000-0000-000000000000";
-const DB_NAME = "recipegt-db";
+const DB_NAME = "recipong-db";
 
 const args = {};
 for (let i = 2; i < process.argv.length; i++) {
@@ -75,7 +76,7 @@ if (config.includes(PLACEHOLDER)) {
 // 2-1. 사진 저장소(KV)
 step("사진 저장소(KV) 준비");
 const KV_PLACEHOLDER = '"id": "00000000000000000000000000000000"';
-const KV_TITLE = "recipegt-images";
+const KV_TITLE = "recipong-images";
 config = readFileSync("wrangler.jsonc", "utf8");
 if (config.includes(KV_PLACEHOLDER)) {
   const findKv = () => {
@@ -96,6 +97,21 @@ if (config.includes(KV_PLACEHOLDER)) {
   console.log(`wrangler.jsonc에 사진 저장소 ID를 적었어요: ${id}`);
 } else {
   console.log("wrangler.jsonc에 이미 사진 저장소 ID가 있어요.");
+}
+
+// 2-2. 인증 메일 보내는 주소 (공개 설정이라 wrangler.jsonc에 적는다)
+step("인증 메일 보내는 주소");
+config = readFileSync("wrangler.jsonc", "utf8");
+let mailFrom = args["mail-from"];
+if (!mailFrom && config.includes('"MAIL_FROM": ""')) {
+  mailFrom = await ask('인증 메일 보내는 주소 (예: 레시퐁 <no-reply@내도메인.com>, Resend에서 인증한 도메인. 비우면 건너뜀): ');
+}
+if (mailFrom) {
+  config = config.replace(/"MAIL_FROM": "[^"]*"/, `"MAIL_FROM": ${JSON.stringify(mailFrom)}`);
+  writeFileSync("wrangler.jsonc", config);
+  console.log(`wrangler.jsonc의 MAIL_FROM을 정했어요: ${mailFrom}`);
+} else {
+  console.log("MAIL_FROM이 비어 있으면 이메일 인증 없이 동작해요.");
 }
 
 // 3. 빌드와 표 만들기, 배포
@@ -131,6 +147,7 @@ const optional = [
   ["GEMINI_API_KEY", "gemini", "Gemini API 키 (https://aistudio.google.com/apikey, 비우면 건너뜀): "],
   ["GROQ_API_KEY", "groq", "Groq API 키 (선택, 비우면 건너뜀): "],
   ["YOUTUBE_API_KEY", "youtube", "YouTube Data API 키 (선택, 비우면 건너뜀): "],
+  ["RESEND_API_KEY", "resend", "Resend API 키 (이메일 인증·비밀번호 찾기, 비우면 건너뜀): "],
 ];
 for (const [name, flag, question] of optional) {
   let value = args[flag];
@@ -146,7 +163,7 @@ ${url ? `주소: ${url}` : "주소는 Cloudflare 대시보드의 Workers & Pages
 
 다음 할 일
 1. 위 주소로 들어가 가입하세요. 관리자 이메일로 가입하면(또는 첫 가입자면) 관리자가 됩니다.
-2. 내 정보 → 관리 → 초대 코드에서 지인용 코드를 만들어 보내세요.
+2. 지인이 가입한 이메일을 알려 주면 내 정보 → 관리 → 사용자 → "이메일로 권한 바꾸기"에서 지인으로 바꾸세요.
 3. 주소를 열었는데 Cloudflare 로그인 화면이 뜨면 workers.dev에 Access가 걸린 상태예요.
-   대시보드 → Workers & Pages → recipegt → Settings → Domains & Routes에서 workers.dev의 Access를 꺼 주세요.
+   대시보드 → Workers & Pages → recipong → Settings → Domains & Routes에서 workers.dev의 Access를 꺼 주세요.
 `);

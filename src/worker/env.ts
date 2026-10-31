@@ -18,6 +18,10 @@ export interface AppEnv {
   OPENROUTER_MODEL: string;
   TURNSTILE_SITE_KEY: string;
   INSTA_HELPER_URL: string;
+  /** 메일 보내는 주소. 예: 레시퐁 <no-reply@내도메인.com> (Resend에서 인증한 도메인) */
+  MAIL_FROM: string;
+  /** 메일 속 링크의 주소. 비우면 요청이 들어온 주소를 쓴다 */
+  APP_URL: string;
 
   /** 쉼표로 구분한 관리자 이메일 (비밀값). 비워 두면 첫 가입자가 관리자 */
   ADMIN_EMAILS?: string;
@@ -28,6 +32,9 @@ export interface AppEnv {
   YOUTUBE_API_KEY?: string;
   TURNSTILE_SECRET?: string;
   INSTA_HELPER_TOKEN?: string;
+  RESEND_API_KEY?: string;
+  /** 로컬 시험용: 메일을 실제로 보내지 않고 링크를 화면에 보여 준다 */
+  MAIL_MOCK?: string;
   AI_MOCK?: string;
 }
 

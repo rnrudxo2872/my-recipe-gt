@@ -1,5 +1,5 @@
-// 레시피GT 서비스 워커: 앱 화면과 정적 파일만 저장해 두고, API는 항상 서버에서 받는다.
-const CACHE = "recipegt-v1";
+// 레시퐁 서비스 워커: 앱 화면과 정적 파일만 저장해 두고, API는 항상 서버에서 받는다.
+const CACHE = "recipong-v1";
 const SHELL = ["/", "/manifest.webmanifest", "/icons/logo-96.png", "/favicon-32.png"];
 
 self.addEventListener("install", (event) => {

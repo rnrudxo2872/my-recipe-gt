@@ -1,4 +1,4 @@
--- 레시피GT 초기 스키마
+-- 레시퐁 초기 스키마
 
 CREATE TABLE users (
   id INTEGER PRIMARY KEY AUTOINCREMENT,

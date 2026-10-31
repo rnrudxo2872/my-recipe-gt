@@ -1,4 +1,4 @@
-# 레시피GT
+# 레시퐁
 
 유튜브·인스타 요리 링크를 **사진 한 장 + 재료 + 순서**로 정리해 두는 지인용 레시피 웹앱입니다. 운영비 0원을 목표로 Cloudflare 무료 플랜과 Gemini 무료 티어 위에서 돌아갑니다.
 
@@ -18,8 +18,8 @@
 
 ## 가입과 사용량
 
-- 누구나 이메일로 가입할 수 있습니다.
-- **지인**(초대 코드로 가입하거나 관리자가 지정)과 **관리자**는 사용량 제한이 없습니다.
+- 누구나 이메일로 가입할 수 있습니다. 가입하면 **인증 메일**이 가고, 링크를 눌러야 쓸 수 있습니다(Resend 키를 넣었을 때). 비밀번호를 잊으면 메일로 다시 정할 수 있습니다.
+- **지인**과 **관리자**는 사용량 제한이 없습니다. 지인이 가입한 이메일을 알려 주면 **관리 → 사용자 → 이메일로 권한 바꾸기**에 넣고 [지인으로]를 누르면 됩니다. 아직 가입 전인 이메일이면 예약해 두었다가, 그 이메일로 가입해 인증을 마치는 순간 지인이 됩니다.
 - **일반 계정**은 맛보기 수준으로 하루 횟수가 정해져 있습니다(나중에 멤버십으로 늘릴 예정). 기본값은 **링크 가져오기 3회, AI 기능 3회**(대체 재료, 입맛대로 바꾸기, 냉장고 추천)이고, 그 밖에 영상 분석은 20분 이하 영상만, 사진 20장, 레시피 저장·수정 60회, AI 요청은 1분에 8회까지입니다. 레시피는 300개, 사진은 모두 200장까지 보관합니다.
 - 과다 사용으로 **제한**된 계정은 링크 1회, AI 1회로 줄어듭니다.
 - 화면에는 남은 횟수가 늘 보이고, 다 쓰면 버튼이 비활성으로 바뀝니다. 직접 작성·수정, 냉장고의 내 레시피 찾기처럼 AI를 쓰지 않는 기능은 횟수와 상관없이 쓸 수 있습니다.
@@ -66,7 +66,7 @@ npm run dev                            # http://localhost:5173
 ```sh
 npm test            # 레시피 정리·링크 판별·재료 매칭 등 단위 테스트
 npm run typecheck
-npm run smoke       # 개발 서버를 켠 상태에서 가입부터 한도·차단까지 전체 흐름 점검 (AI_MOCK=1 필요)
+npm run smoke       # 개발 서버를 켠 상태에서 가입부터 한도·차단까지 전체 흐름 점검 (AI_MOCK=1, MAIL_MOCK=1 필요)
 ```
 
 ## 배포
@@ -75,20 +75,31 @@ npm run smoke       # 개발 서버를 켠 상태에서 가입부터 한도·차
 
 ```sh
 npx wrangler login
-npm run setup -- --admin 내이메일@example.com --gemini 내-Gemini-키
+npm run setup -- --admin 내이메일@example.com --gemini 내-Gemini-키 --resend 내-Resend-키 --mail-from "레시퐁 <no-reply@내도메인.com>"
 ```
 
 `setup`이 하는 일은 다음과 같습니다. 다시 실행해도 이미 있는 것은 건드리지 않습니다.
 
 1. D1 데이터베이스와 사진용 KV를 만들고 `wrangler.jsonc`에 ID를 적습니다. 이 ID는 비밀이 아니니 커밋해 두세요(자동 배포에 필요).
 2. 빌드하고, 표를 만들고, 배포합니다.
-3. `AUTH_PEPPER`를 자동으로 만들고, 넘겨받은 키들을 비밀값으로 넣습니다.
+3. `AUTH_PEPPER`를 자동으로 만들고, 넘겨받은 키들을 비밀값으로 넣습니다. `--mail-from`은 `wrangler.jsonc`의 `MAIL_FROM`에 적습니다.
 
 그다음부터는 `npm run deploy`만 하면 됩니다.
 
+### 이메일 인증 메일 (Resend, 무료 하루 100통·월 3,000통)
+
+1. https://resend.com 가입 → **Domains**에서 내 도메인을 추가하고, 안내하는 DNS 레코드를 넣습니다(도메인이 Cloudflare에 있으면 버튼 하나로 자동 설정).
+2. **API Keys**에서 키를 만듭니다(Sending access).
+3. `setup`에 `--resend 키 --mail-from "레시퐁 <no-reply@내도메인.com>"`을 넘기거나, 직접 `npx wrangler secret put RESEND_API_KEY`를 하고 `wrangler.jsonc`의 `MAIL_FROM`을 채운 뒤 배포합니다.
+
+- 키와 `MAIL_FROM`이 둘 다 있어야 켜집니다. 없으면 이메일 인증 없이 가입만으로 쓸 수 있습니다(나중에 켜면, 그때까지 인증하지 않은 계정은 다음 접속 때 인증해야 합니다).
+- 무료 한도를 넘지 않게 하루 90통에서 멈추고, 한 사람에게는 1분에 1통, 하루 5통까지만 보냅니다.
+- 메일이 안 가는 지인은 관리 화면의 사용자 시트에서 **인증한 것으로 처리**할 수 있습니다.
+- 로컬에서는 `.dev.vars`의 `MAIL_MOCK=1`로 메일을 보내지 않고 인증 링크를 화면에 띄웁니다.
+
 ### GitHub에 올리면 자동 배포 (GitHub Actions 없이)
 
-Cloudflare 대시보드 → Workers & Pages → recipegt → Settings → **Builds**에서 이 GitHub 저장소를 연결합니다.
+Cloudflare 대시보드 → Workers & Pages → recipong → Settings → **Builds**에서 이 GitHub 저장소를 연결합니다.
 
 - Build command: `npm run build`
 - Deploy command: `npx wrangler d1 migrations apply DB --remote && npx wrangler deploy`
@@ -97,7 +108,7 @@ Cloudflare 대시보드 → Workers & Pages → recipegt → Settings → **Buil
 
 ### 주소가 Cloudflare 로그인 화면으로 막힐 때
 
-계정의 `workers.dev`에 Cloudflare Access가 걸려 있으면 낯선 방문자가 앱에 들어오지 못합니다. Workers & Pages → recipegt → Settings → Domains & Routes에서 workers.dev의 Access를 끄거나, 개인 도메인을 연결하세요.
+계정의 `workers.dev`에 Cloudflare Access가 걸려 있으면 낯선 방문자가 앱에 들어오지 못합니다. Workers & Pages → recipong → Settings → Domains & Routes에서 workers.dev의 Access를 끄거나, 개인 도메인을 연결하세요.
 
 ## 설정
 
@@ -109,13 +120,16 @@ Cloudflare 대시보드 → Workers & Pages → recipegt → Settings → **Buil
 | `GROQ_MODEL`, `WORKERS_AI_MODEL`, `OPENROUTER_MODEL` | 예비 엔진 모델 |
 | `TURNSTILE_SITE_KEY` | 가입 봇 차단(선택). 비밀 키는 `TURNSTILE_SECRET`로 |
 | `INSTA_HELPER_URL` | 폰서버 인스타 도우미 주소(선택, [helper/README.md](helper/README.md)) |
+| `MAIL_FROM` | 인증 메일 보내는 주소. Resend에서 인증한 도메인이어야 합니다. 예: `레시퐁 <no-reply@example.com>` |
+| `APP_URL` | 메일 속 링크 주소(개인 도메인을 붙였을 때). 비우면 접속한 주소를 씁니다. |
 
 비밀값(`npx wrangler secret put 이름`):
 
 | 이름 | 필수 | 설명 |
 |---|---|---|
 | `AUTH_PEPPER` | ✔ | 비밀번호 해시용. `setup`이 만들어 줍니다. **한 번 정하면 바꾸지 마세요.** 바꾸면 모든 비밀번호가 맞지 않게 됩니다. |
-| `ADMIN_EMAILS` |  | 관리자 이메일(쉼표 구분). 없으면 첫 가입자가 관리자입니다. |
+| `ADMIN_EMAILS` |  | 관리자 이메일(쉼표 구분). 이 이메일로 가입해 **인증을 마치면** 관리자가 됩니다. 없으면 첫 가입자가 관리자입니다. |
+| `RESEND_API_KEY` | 권장 | 이메일 인증·비밀번호 찾기 메일 |
 | `GEMINI_API_KEY` | 사실상 ✔ | https://aistudio.google.com/apikey |
 | `GROQ_API_KEY`, `OPENROUTER_API_KEY` |  | 예비 AI |
 | `YOUTUBE_API_KEY` | 권장 | 설명란과 영상 길이를 안정적으로 읽습니다(무료 하루 1만 건). 없으면 공개 페이지를 읽는데, 클라우드 IP에서 막히면 영상 길이를 몰라 **일반 계정은 영상 분석을 못 합니다**(설명란·자막 붙여넣기는 됨). |

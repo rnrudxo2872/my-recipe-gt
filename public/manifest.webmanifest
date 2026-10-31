@@ -1,6 +1,6 @@
 {
-  "name": "레시피GT",
-  "short_name": "레시피GT",
+  "name": "레시퐁",
+  "short_name": "레시퐁",
   "description": "유튜브·인스타 요리 링크를 레시피 카드로 정리해요.",
   "lang": "ko",
   "start_url": "/",

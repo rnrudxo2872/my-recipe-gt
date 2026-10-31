@@ -33,7 +33,7 @@ export function Landing() {
       <header className="landing-top">
         <span className="brand">
           <img src="/icons/logo-96.png" alt="" />
-          <span>레시피GT</span>
+          <span>레시퐁</span>
         </span>
         <Link to="/login" className="btn btn-quiet btn-sm">
           로그인
@@ -98,7 +98,7 @@ export function Landing() {
         ))}
       </section>
 
-      <p className="landing-foot">누구나 가입할 수 있어요. 초대 코드가 없는 계정은 하루 사용량이 정해져 있어요.</p>
+      <p className="landing-foot">누구나 가입할 수 있어요. 일반 계정은 하루 사용량이 정해져 있어요.</p>
     </div>
   );
 }

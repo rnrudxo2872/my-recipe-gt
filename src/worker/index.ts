@@ -1,9 +1,10 @@
 import { Hono } from "hono";
 import type { AppConfig } from "../shared/api";
 import { aiReady } from "./ai/providers";
-import { requireUser } from "./auth";
+import { requireVerified } from "./auth";
 import { ApiError, type AppEnv, type HonoEnv } from "./env";
 import { cleanOrphanImages, getImage, imageUrl, putImage } from "./images";
+import { mailMode, verificationRequired } from "./mail";
 import { isUnlimited, useQuota } from "./quota";
 import { account } from "./routes/account";
 import { admin } from "./routes/admin";
@@ -19,7 +20,7 @@ const app = new Hono<HonoEnv>();
 // 다른 사이트가 로그인 쿠키를 이용해 요청을 보내지 못하도록, 바꾸는 요청에는 우리 앱만 붙이는 헤더를 요구한다.
 // (다른 출처에서 이 헤더를 붙이려면 CORS 허락이 필요한데, 이 서버는 허락하지 않는다.)
 app.use("/api/*", async (c, next) => {
-  if (c.req.method !== "GET" && c.req.method !== "HEAD" && c.req.header("x-recipegt") !== "1") {
+  if (c.req.method !== "GET" && c.req.method !== "HEAD" && c.req.header("x-recipong") !== "1") {
     throw new ApiError(403, "csrf", "잘못된 요청이에요. 페이지를 새로고침해 주세요.");
   }
   await next();
@@ -32,6 +33,8 @@ app.get("/api/config", (c) =>
     turnstileSiteKey: c.env.TURNSTILE_SECRET ? c.env.TURNSTILE_SITE_KEY : "",
     instaHelper: Boolean(c.env.INSTA_HELPER_URL),
     aiReady: aiReady(c.env),
+    emailVerification: verificationRequired(c.env),
+    passwordReset: mailMode(c.env) !== "off",
   }),
 );
 
@@ -41,7 +44,7 @@ app.route("/api/import", importer);
 app.route("/api/fridge", fridge);
 app.route("/api/admin", admin);
 
-app.post("/api/images", requireUser, async (c) => {
+app.post("/api/images", requireVerified, async (c) => {
   const user = c.get("user");
   const mime = (c.req.header("content-type") ?? "").split(";")[0].trim();
   const length = Number(c.req.header("content-length") ?? 0);
@@ -92,6 +95,7 @@ export default {
     await env.DB.batch([
       env.DB.prepare("DELETE FROM sessions WHERE expires_at < ?1").bind(now),
       env.DB.prepare("DELETE FROM rate_buckets WHERE reset_at < ?1").bind(now),
+      env.DB.prepare("DELETE FROM email_tokens WHERE expires_at < ?1").bind(now),
       env.DB.prepare("DELETE FROM usage_daily WHERE day < ?1").bind(old),
       env.DB.prepare("DELETE FROM events WHERE created_at < ?1").bind(now - 90 * 24 * 60 * 60 * 1000),
     ]);

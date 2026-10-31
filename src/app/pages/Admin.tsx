@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Copy, Plus, Search, Share2, Trash2 } from "lucide-react";
+import { Copy, Search, Trash2 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import type { AdminOverview, AdminUserRow, Limits, Policy, Role, UserStatus } from "../../shared/api";
 import { Sheet } from "../components/Sheet";
@@ -8,7 +8,7 @@ import { useDocumentTitle, useUser } from "../lib/hooks";
 import { relativeTime } from "../lib/text";
 import { useToast } from "../lib/toast";
 
-type Tab = "users" | "invites" | "usage" | "events";
+type Tab = "users" | "usage" | "events";
 
 const ROLE: Record<Role, string> = { admin: "관리자", friend: "지인", member: "일반" };
 const STATUS: Record<UserStatus, string> = { active: "정상", limited: "제한", blocked: "차단" };
@@ -36,7 +36,6 @@ export function Admin() {
         {(
           [
             ["users", "사용자"],
-            ["invites", "초대 코드"],
             ["usage", "사용량·한도"],
             ["events", "기록"],
           ] as [Tab, string][]
@@ -52,8 +51,6 @@ export function Admin() {
         <p className="form-error">관리 정보를 불러오지 못했어요. {overview.error.message}</p>
       ) : tab === "users" ? (
         <Users data={overview.data} />
-      ) : tab === "invites" ? (
-        <Invites data={overview.data} />
       ) : tab === "usage" ? (
         <Usage data={overview.data} />
       ) : (
@@ -81,6 +78,7 @@ function Users({ data }: { data: AdminOverview }) {
 
   return (
     <>
+      <RoleByEmail data={data} />
       <div className="stat-grid" style={{ marginBottom: 16, gridTemplateColumns: "repeat(3, minmax(0,1fr))" }}>
         <div className="stat">
           <div className="value num">{counts.friend}</div>
@@ -107,6 +105,7 @@ function Users({ data }: { data: AdminOverview }) {
               {u.name}
               <RoleBadge role={u.role} />
               <StatusBadge status={u.status} />
+              {!u.emailVerified && <span className="badge">미인증</span>}
             </span>
             <span className="sub" style={{ display: "block" }}>
               {u.email} · 레시피 {u.recipeCount}개 · {u.lastSeenAt ? relativeTime(u.lastSeenAt) : "접속 기록 없음"}
@@ -144,7 +143,7 @@ function UserSheet({ user, onClose }: { user: AdminUserRow | null; onClose: () =
   }, [user?.id]);
 
   const update = useMutation({
-    mutationFn: (body: { role?: Role; status?: UserStatus; reason?: string }) => api.admin.updateUser(user!.id, body),
+    mutationFn: (body: { role?: Role; status?: UserStatus; reason?: string; verified?: boolean }) => api.admin.updateUser(user!.id, body),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["admin"] });
       toast.show("바꿨어요.");
@@ -182,6 +181,16 @@ function UserSheet({ user, onClose }: { user: AdminUserRow | null; onClose: () =
               </>
             )}
           </p>
+
+          {!user.emailVerified && (
+            <div className="field">
+              <span className="label">이메일 인증</span>
+              <button type="button" className="btn btn-soft" disabled={update.isPending} onClick={() => update.mutate({ verified: true })}>
+                인증한 것으로 처리
+              </button>
+              <span className="help">아직 메일 인증을 하지 않았어요. 아는 사람인데 메일이 안 간다면 직접 처리해 주세요.</span>
+            </div>
+          )}
 
           <div className="field">
             <span className="label">역할</span>
@@ -259,116 +268,80 @@ function UserSheet({ user, onClose }: { user: AdminUserRow | null; onClose: () =
   );
 }
 
-function Invites({ data }: { data: AdminOverview }) {
+/** 지인이 알려 준 이메일로 권한을 바로 바꾼다. 아직 가입 전이면 예약해 두었다가 가입·인증 때 적용한다. */
+function RoleByEmail({ data }: { data: AdminOverview }) {
   const qc = useQueryClient();
   const toast = useToast();
-  const [note, setNote] = useState("");
-  const [maxUses, setMaxUses] = useState("1");
-  const [days, setDays] = useState("14");
-  const [created, setCreated] = useState<string | null>(null);
-
-  const create = useMutation({
-    mutationFn: () => api.admin.createInvite({ note: note.trim(), maxUses: Number(maxUses) || 1, expiresDays: Number(days) || null }),
-    onSuccess: (r) => {
-      setCreated(r.code);
-      setNote("");
+  const [email, setEmail] = useState("");
+  const set = useMutation({
+    mutationFn: (role: Role) => api.admin.setRoleByEmail(email.trim(), role),
+    onSuccess: (r, role) => {
       qc.invalidateQueries({ queryKey: ["admin"] });
+      toast.show(
+        r.status === "updated"
+          ? `${r.name}님을 ${ROLE[role]} 계정으로 바꿨어요.`
+          : `아직 가입하지 않은 이메일이에요. 가입해서 인증을 마치면 ${ROLE[role]} 계정이 돼요.`,
+      );
+      setEmail("");
     },
     onError: (e) => toast.error(e),
   });
   const remove = useMutation({
-    mutationFn: (code: string) => api.admin.deleteInvite(code),
+    mutationFn: (target: string) => api.admin.deleteGrant(target),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["admin"] }),
     onError: (e) => toast.error(e),
   });
-
-  const linkOf = (code: string) => `${location.origin}/signup?invite=${code}`;
-
-  async function shareInvite(code: string) {
-    const text = `레시피GT 초대 코드: ${code}\n가입하기: ${linkOf(code)}`;
-    try {
-      if (navigator.share) {
-        await navigator.share({ title: "레시피GT 초대", text });
-        return;
-      }
-    } catch (e) {
-      if ((e as Error).name === "AbortError") return;
-    }
-    await navigator.clipboard?.writeText(text);
-    toast.show("초대 링크를 복사했어요.");
-  }
+  const valid = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim());
 
   return (
-    <>
-      <div className="card">
-        <h2>지인 초대하기</h2>
-        <p className="card-sub">이 코드로 가입하거나 내 정보에서 코드를 넣으면 지인 계정(제한 없음)이 돼요.</p>
-        <label className="field">
-          <span className="label">메모</span>
-          <input className="input" value={note} maxLength={40} placeholder="예: 엄마, 회사 동기들" onChange={(e) => setNote(e.target.value)} />
-        </label>
-        <div className="policy-grid">
-          <label className="field">
-            <span className="label">쓸 수 있는 사람 수</span>
-            <input className="input num" inputMode="numeric" value={maxUses} onChange={(e) => setMaxUses(e.target.value.replace(/\D/g, ""))} />
-          </label>
-          <label className="field">
-            <span className="label">유효 기간(일, 0은 무기한)</span>
-            <input className="input num" inputMode="numeric" value={days} onChange={(e) => setDays(e.target.value.replace(/\D/g, ""))} />
-          </label>
-        </div>
-        <button type="button" className="btn btn-primary btn-block" disabled={create.isPending} onClick={() => create.mutate()}>
-          <Plus aria-hidden="true" />
-          초대 코드 만들기
+    <div className="card">
+      <h2>이메일로 권한 바꾸기</h2>
+      <p className="card-sub">지인이 가입한 이메일을 알려 주면 넣고 권한을 누르세요. 지인과 관리자는 사용량 제한이 없어요.</p>
+      <input
+        className="input"
+        type="email"
+        inputMode="email"
+        autoComplete="off"
+        placeholder="name@example.com"
+        aria-label="권한을 바꿀 이메일"
+        value={email}
+        onChange={(e) => setEmail(e.target.value)}
+      />
+      <div className="btn-row" style={{ marginTop: 10 }}>
+        <button type="button" className="btn btn-primary" disabled={!valid || set.isPending} onClick={() => set.mutate("friend")}>
+          지인으로
         </button>
-        {created && (
-          <div style={{ marginTop: 16 }}>
-            <div className="code-box">
-              {created}
-              <button type="button" className="icon-btn" aria-label="초대 링크 보내기" onClick={() => shareInvite(created)}>
-                <Share2 />
-              </button>
-            </div>
-            <p className="help" style={{ marginTop: 6 }}>
-              링크: {linkOf(created)}
-            </p>
-          </div>
-        )}
+        <button type="button" className="btn" disabled={!valid || set.isPending} onClick={() => set.mutate("member")}>
+          일반으로
+        </button>
+        <button type="button" className="btn btn-quiet" disabled={!valid || set.isPending} onClick={() => set.mutate("admin")}>
+          관리자로
+        </button>
       </div>
-
-      <h2 style={{ fontSize: 19, margin: "8px 0 8px" }}>만든 코드</h2>
-      {data.invites.length === 0 ? (
-        <p className="help">아직 만든 초대 코드가 없어요.</p>
-      ) : (
-        data.invites.map((i) => {
-          const expired = i.expiresAt != null && i.expiresAt < Date.now();
-          const used = i.uses >= i.maxUses;
-          return (
-            <div className="user-row" key={i.code}>
+      {data.grants.length > 0 && (
+        <div style={{ marginTop: 16 }}>
+          <p className="label" style={{ marginBottom: 4 }}>
+            가입하면 적용할 권한
+          </p>
+          {data.grants.map((g) => (
+            <div className="user-row" key={g.email}>
               <span className="grow">
                 <span className="name">
-                  <span className="num" style={{ letterSpacing: "0.06em" }}>
-                    {i.code}
-                  </span>
-                  {(expired || used) && <span className="badge">{used ? "다 씀" : "만료"}</span>}
+                  {g.email}
+                  <RoleBadge role={g.role} />
                 </span>
                 <span className="sub" style={{ display: "block" }}>
-                  {i.note || "메모 없음"} · {i.uses}/{i.maxUses}명 · {i.expiresAt ? (expired ? "만료됨" : `${relativeTime(i.createdAt)} 만듦`) : "무기한"}
+                  {relativeTime(g.createdAt)} 예약 · 가입해서 인증을 마치면 적용돼요
                 </span>
               </span>
-              {!expired && !used && (
-                <button type="button" className="icon-btn" aria-label={`${i.code} 보내기`} onClick={() => shareInvite(i.code)}>
-                  <Share2 />
-                </button>
-              )}
-              <button type="button" className="icon-btn" aria-label={`${i.code} 지우기`} onClick={() => remove.mutate(i.code)}>
+              <button type="button" className="icon-btn" aria-label={`${g.email} 예약 지우기`} onClick={() => remove.mutate(g.email)}>
                 <Trash2 />
               </button>
             </div>
-          );
-        })
+          ))}
+        </div>
       )}
-    </>
+    </div>
   );
 }
 
@@ -448,6 +421,7 @@ function Usage({ data }: { data: AdminOverview }) {
         <ul className="status-list">
           {(
             [
+              [p.mail === "mock" ? "이메일 인증 (시험 모드: 메일 안 보냄)" : "이메일 인증 메일 (Resend)", p.mail !== "off"],
               ["Gemini (주 AI, 영상 분석)", p.gemini],
               ["Groq (예비 AI)", p.groq],
               ["Workers AI (예비 AI)", p.workersAi],

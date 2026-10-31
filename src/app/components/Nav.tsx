@@ -37,7 +37,7 @@ export function Sidebar() {
     <aside className="sidebar" aria-label="주요 메뉴">
       <Link to="/" className="brand">
         <img src="/icons/logo-96.png" alt="" />
-        <span>레시피GT</span>
+        <span>레시퐁</span>
       </Link>
       <Link to="/add" className="btn btn-primary">
         <Plus aria-hidden="true" />

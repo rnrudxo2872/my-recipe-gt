@@ -4,6 +4,7 @@ import type { MiddlewareHandler } from "hono";
 import { deleteCookie, getCookie, setCookie } from "hono/cookie";
 import type { PublicUser, Role, UserStatus } from "../shared/api";
 import { ApiError, base64url, randomId, sha256Hex, type AppEnv, type Ctx, type HonoEnv, type SessionUser } from "./env";
+import { verificationRequired } from "./mail";
 
 const COOKIE = "rgt_sid";
 const SESSION_DAYS = 60;
@@ -13,7 +14,7 @@ const DAY = 24 * 60 * 60 * 1000;
 const PBKDF2_ITERATIONS = 20_000;
 
 function pepperBytes(env: AppEnv): Uint8Array {
-  return new TextEncoder().encode(env.AUTH_PEPPER || "recipegt-dev-pepper");
+  return new TextEncoder().encode(env.AUTH_PEPPER || "recipong-dev-pepper");
 }
 
 async function derive(password: string, salt: Uint8Array, iterations: number, env: AppEnv): Promise<Uint8Array> {
@@ -60,6 +61,7 @@ interface UserRow {
   status_reason: string | null;
   created_at: number;
   last_seen_at: number | null;
+  email_verified_at: number | null;
 }
 
 export function toPublicUser(row: UserRow): SessionUser {
@@ -70,6 +72,7 @@ export function toPublicUser(row: UserRow): SessionUser {
     role: row.role,
     status: row.status,
     statusReason: row.status_reason,
+    emailVerified: row.email_verified_at != null,
     createdAt: row.created_at,
     lastSeenAt: row.last_seen_at,
   };
@@ -111,7 +114,7 @@ export async function currentUser(c: Ctx): Promise<SessionUser | null> {
   const tokenHash = await sha256Hex(token);
   const now = Date.now();
   const row = await c.env.DB.prepare(
-    `SELECT u.id, u.email, u.name, u.role, u.status, u.status_reason, u.created_at, u.last_seen_at, s.expires_at
+    `SELECT u.id, u.email, u.name, u.role, u.status, u.status_reason, u.created_at, u.last_seen_at, u.email_verified_at, s.expires_at
      FROM sessions s JOIN users u ON u.id = s.user_id
      WHERE s.token_hash = ?1 AND s.expires_at > ?2`,
   )
@@ -137,6 +140,17 @@ export async function currentUser(c: Ctx): Promise<SessionUser | null> {
 export const requireUser: MiddlewareHandler<HonoEnv> = async (c, next) => {
   const user = await currentUser(c);
   if (!user) throw new ApiError(401, "unauthorized", "로그인이 필요해요.");
+  c.set("user", user);
+  await next();
+};
+
+/** 로그인 + 이메일 인증까지 마친 사용자만. 앱 기능(레시피, 가져오기, AI, 관리)에 쓴다. */
+export const requireVerified: MiddlewareHandler<HonoEnv> = async (c, next) => {
+  const user = await currentUser(c);
+  if (!user) throw new ApiError(401, "unauthorized", "로그인이 필요해요.");
+  if (!user.emailVerified && verificationRequired(c.env)) {
+    throw new ApiError(403, "unverified", "이메일 인증을 마쳐야 쓸 수 있어요. 메일함을 확인해 주세요.");
+  }
   c.set("user", user);
   await next();
 };
@@ -169,21 +183,16 @@ export async function verifyTurnstile(env: AppEnv, token: string | undefined, ip
   }
 }
 
-/** 초대 코드를 쓰면 지인이 된다. 성공하면 true */
-export async function redeemInvite(db: D1Database, code: string, userId: number): Promise<boolean> {
-  const clean = code.trim().toUpperCase();
-  if (!clean) return false;
-  const now = Date.now();
-  const res = await db
-    .prepare(
-      "UPDATE invites SET uses = uses + 1 WHERE code = ?1 AND uses < max_uses AND (expires_at IS NULL OR expires_at > ?2)",
-    )
-    .bind(clean, now)
-    .run();
-  if (!res.meta.changes) return false;
+/**
+ * 관리자가 이 이메일에 미리 정해 둔 권한이 있으면 적용한다.
+ * 이메일 인증을 마친 뒤(또는 인증을 쓰지 않을 때 가입 직후)에만 부른다. 남이 그 주소로 먼저 가입해 권한을 가로채지 못하게.
+ */
+export async function applyRoleGrant(db: D1Database, userId: number, email: string) {
+  const grant = await db.prepare("SELECT role FROM role_grants WHERE email = ?1").bind(email).first<{ role: string }>();
+  if (!grant) return;
   await db.batch([
-    db.prepare("UPDATE users SET role = 'friend', status = 'active', status_reason = NULL WHERE id = ?1 AND role = 'member'").bind(userId),
-    db.prepare("INSERT INTO events (user_id, kind, detail, created_at) VALUES (?1, 'invite', ?2, ?3)").bind(userId, `초대 코드 ${clean} 사용`, now),
+    db.prepare("UPDATE users SET role = ?1 WHERE id = ?2").bind(grant.role, userId),
+    db.prepare("DELETE FROM role_grants WHERE email = ?1").bind(email),
+    db.prepare("INSERT INTO events (user_id, kind, detail, created_at) VALUES (?1, 'role', ?2, ?3)").bind(userId, `미리 정해 둔 권한(${grant.role}) 적용`, Date.now()),
   ]);
-  return true;
 }

@@ -1,4 +1,4 @@
-/* 레시피GT 디자인 시스템
+/* 레시퐁 디자인 시스템
    색은 곰 셰프 아이콘에서 가져왔다: 노른자 노랑, 코코아 외곽선, 볼터치 분홍, 파 초록.
    주 버튼은 아이콘처럼 굵은 외곽선을 두른 '스티커' 모양이 이 앱의 얼굴이다. 나머지는 조용하게. */
 
@@ -2943,4 +2943,38 @@ li.is-now .stage-icon {
     animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
   }
+}
+
+/* ───────── 이메일 인증 ───────── */
+
+.verify-icon {
+  display: grid;
+  place-items: center;
+  width: 72px;
+  height: 72px;
+  margin: 0 auto 18px;
+  border-radius: 24px;
+  background: var(--yolk-soft);
+  color: var(--ink);
+}
+
+.verify-icon svg {
+  width: 34px;
+  height: 34px;
+}
+
+.verify-icon.is-done {
+  background: var(--leaf-soft);
+  color: var(--leaf);
+}
+
+.verify-icon.is-error {
+  background: var(--danger-soft);
+  color: var(--danger);
+}
+
+.auth .notice a,
+.auth .help a {
+  font-weight: 700;
+  color: var(--ink);
 }

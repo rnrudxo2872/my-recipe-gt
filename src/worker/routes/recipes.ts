@@ -5,14 +5,14 @@ import type { SubstituteResult } from "../../shared/api";
 import { normalizeRecipe, parseQty, type RecipeVersion, type SourceType } from "../../shared/recipe";
 import { substituteTask, tweakTask } from "../ai/prompts";
 import { runAi } from "../ai/providers";
-import { requireUser } from "../auth";
+import { requireVerified } from "../auth";
 import { ApiError, readJson, type HonoEnv } from "../env";
 import { deleteImageIfUnused, keyFromImageUrl } from "../images";
 import { assertRecipeRoom, useQuota } from "../quota";
 import { createRecipe, getOwnedRecipe, listVersions, saveVersion, SUMMARY_COLUMNS, toDetail, toSummary, type RecipeRow } from "../recipes-db";
 
 export const recipes = new Hono<HonoEnv>();
-recipes.use("*", requireUser);
+recipes.use("*", requireVerified);
 
 /** 사진 값으로 받을 수 있는 것: 내가 올린 사진(/img/..)이나 https 주소 */
 function cleanImage(value: unknown): string | null {

@@ -1,6 +1,6 @@
 {
   "$schema": "./node_modules/wrangler/config-schema.json",
-  "name": "recipegt",
+  "name": "recipong",
   "main": "./src/worker/index.ts",
   "compatibility_date": "2026-10-01",
   "assets": {
@@ -10,7 +10,7 @@
   "d1_databases": [
     {
       "binding": "DB",
-      "database_name": "recipegt-db",
+      "database_name": "recipong-db",
       // `npm run setup`이 실제 ID로 바꿔 줍니다.
       "database_id": "00000000-0000-0000-0000-000000000000",
       "migrations_dir": "migrations"
@@ -21,16 +21,20 @@
   // Workers AI: 키 없이 하루 1만 뉴런까지 무료인 예비 AI 엔진
   "ai": { "binding": "AI" },
   // R2(10GB 무료, 활성화할 때 카드 등록 필요)를 쓰려면 아래 주석을 풀고 버킷을 만드세요. 있으면 KV 대신 R2에 저장합니다.
-  // "r2_buckets": [{ "binding": "IMAGES", "bucket_name": "recipegt-images" }],
+  // "r2_buckets": [{ "binding": "IMAGES", "bucket_name": "recipong-images" }],
   "vars": {
-    "APP_NAME": "레시피GT",
+    "APP_NAME": "레시퐁",
     // 앞에서부터 차례로 시도합니다. 모델마다 무료 한도가 따로라 여러 개를 두면 버티는 양이 늘어납니다.
     "GEMINI_MODELS": "gemini-3.8-flash,gemini-3.5-flash-lite,gemini-3.1-flash-lite",
     "GROQ_MODEL": "llama-3.3-70b-versatile",
     "WORKERS_AI_MODEL": "@cf/meta/llama-3.3-70b-instruct-fp8-fast",
     "OPENROUTER_MODEL": "meta-llama/llama-3.3-70b-instruct:free",
     "TURNSTILE_SITE_KEY": "",
-    "INSTA_HELPER_URL": ""
+    "INSTA_HELPER_URL": "",
+    // 인증 메일 보내는 주소. Resend에서 인증한 도메인이어야 합니다. 예: "레시퐁 <no-reply@example.com>"
+    "MAIL_FROM": "",
+    // 메일 속 링크 주소(개인 도메인을 붙였을 때). 비우면 접속한 주소를 씁니다.
+    "APP_URL": ""
   },
   "triggers": { "crons": ["0 19 * * *"] },
   "observability": { "enabled": true }

@@ -5,13 +5,13 @@ import { matchPantry } from "../../shared/ingredients";
 import { isUsableRecipe, normalizeRecipe } from "../../shared/recipe";
 import { recommendTask } from "../ai/prompts";
 import { runAi } from "../ai/providers";
-import { requireUser } from "../auth";
+import { requireVerified } from "../auth";
 import { ApiError, readJson, type HonoEnv } from "../env";
 import { useQuota } from "../quota";
 import { toSummary, type RecipeRow } from "../recipes-db";
 
 export const fridge = new Hono<HonoEnv>();
-fridge.use("*", requireUser);
+fridge.use("*", requireVerified);
 
 function cleanItems(value: unknown): string[] {
   const list = Array.isArray(value) ? value : [];
