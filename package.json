@@ -8,7 +8,7 @@
     "build": "vite build",
     "preview": "vite preview",
     "test": "vitest run",
-    "typecheck": "wrangler types >/dev/null && tsc -p tsconfig.app.json --noEmit && tsc -p tsconfig.worker.json --noEmit",
+    "typecheck": "wrangler types && tsc -p tsconfig.app.json --noEmit && tsc -p tsconfig.worker.json --noEmit",
     "smoke": "node scripts/smoke.mjs",
     "db:migrate:local": "wrangler d1 migrations apply DB --local",
     "db:migrate:remote": "wrangler d1 migrations apply DB --remote",
