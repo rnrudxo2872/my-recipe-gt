@@ -1,6 +1,6 @@
 import { useQueryClient } from "@tanstack/react-query";
 import { useEffect, useRef, useState, type FormEvent } from "react";
-import { Link, useLocation, useNavigate, useSearchParams } from "react-router";
+import { Link, useLocation, useSearchParams } from "react-router";
 import { api, ApiError } from "../lib/api";
 import { useConfig, useDocumentTitle } from "../lib/hooks";
 import { useToast } from "../lib/toast";
@@ -108,7 +108,6 @@ export function Signup() {
   useDocumentTitle("가입하기");
   const qc = useQueryClient();
   const toast = useToast();
-  const navigate = useNavigate();
   const [params] = useSearchParams();
   const config = useConfig();
   const [form, setForm] = useState({ name: "", email: "", password: "", invite: params.get("invite") ?? "", website: "" });
@@ -130,8 +129,8 @@ export function Signup() {
       const res = await api.signup({ ...form, invite: form.invite.trim() || undefined, turnstile: token || undefined });
       if (res.inviteAccepted) toast.show("지인 초대 코드를 확인했어요. 사용량 제한 없이 쓸 수 있어요.");
       if (res.inviteRejected) toast.show("초대 코드를 쓸 수 없어서 일반 계정으로 가입했어요. 내 정보에서 다시 넣을 수 있어요.", { tone: "error" });
+      // me가 바뀌면 /signup 경로가 next(내부 주소만)로 보내 준다.
       await qc.invalidateQueries({ queryKey: ["me"] });
-      navigate(params.get("next") ?? "/", { replace: true });
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "가입하지 못했어요. 다시 시도해 주세요.");
       setBusy(false);
@@ -176,6 +175,9 @@ export function Signup() {
           {busy ? "가입하는 중…" : "가입하고 시작하기"}
         </button>
       </form>
+      <p className="help" style={{ textAlign: "center", marginTop: 14 }}>
+        레시피를 정리할 때 링크와 글 내용이 AI(Google Gemini)로 보내져요. 개인정보는 넣지 마세요.
+      </p>
       <p className="auth-switch">
         이미 계정이 있다면 <Link to="/login">로그인</Link>
       </p>

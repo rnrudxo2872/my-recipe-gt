@@ -37,7 +37,8 @@ export function josa(word: string, particle: string): string {
 export function replaceIngredientName(text: string, from: string, to: string): string {
   if (!from || from === to) return text;
   const escaped = from.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  return text.replace(new RegExp(`${escaped}(이랑|으로|을|를|이|가|은|는|과|와|랑|로)?`, "g"), (_, p: string | undefined) => (p ? `${to}${josa(to, p)}` : to));
+  // 앞 글자가 한글이면 다른 단어의 일부다('파'를 바꿀 때 '양파'는 그대로).
+  return text.replace(new RegExp(`(?<![가-힣])${escaped}(이랑|으로|을|를|이|가|은|는|과|와|랑|로)?`, "g"), (_, p: string | undefined) => (p ? `${to}${josa(to, p)}` : to));
 }
 
 export function relativeTime(ts: number, now = Date.now()): string {

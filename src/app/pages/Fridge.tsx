@@ -8,7 +8,7 @@ import { ChipInput } from "../components/ChipInput";
 import { RecipeImage } from "../components/RecipeImage";
 import { Sheet } from "../components/Sheet";
 import { api } from "../lib/api";
-import { useDocumentTitle, useUser } from "../lib/hooks";
+import { useDocumentTitle, useRecipes, useUser } from "../lib/hooks";
 import { useToast } from "../lib/toast";
 
 type Match = Awaited<ReturnType<typeof api.matchPantry>>[number];
@@ -82,7 +82,7 @@ export function Fridge() {
     placeholderData: (prev) => prev,
   });
 
-  const recipes = qc.getQueryData<Awaited<ReturnType<typeof api.recipes>>>(["recipes"]);
+  const { data: recipes } = useRecipes();
   const suggestions = useMemo(() => COMMON_INGREDIENTS, []);
 
   const ai = useMutation({

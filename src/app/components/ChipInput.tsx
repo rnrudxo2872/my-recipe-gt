@@ -12,7 +12,8 @@ export function ChipInput(props: {
 }) {
   const { values, onChange, suggestions = [], max = 40 } = props;
   const [text, setText] = useState("");
-  const [active, setActive] = useState(0);
+  // -1이면 자동완성에서 고른 것이 없다(엔터는 입력한 글자를 넣는다).
+  const [active, setActive] = useState(-1);
   const listId = useId();
 
   const matches = useMemo(() => {
@@ -31,7 +32,7 @@ export function ChipInput(props: {
     for (const p of parts) if (!next.includes(p) && next.length < max) next.push(p.slice(0, 30));
     onChange(next);
     setText("");
-    setActive(0);
+    setActive(-1);
   }
 
   return (
@@ -50,19 +51,22 @@ export function ChipInput(props: {
           onChange={(e) => {
             const v = e.target.value;
             if (/[,，]/.test(v)) add(v);
-            else setText(v);
+            else {
+              setText(v);
+              setActive(-1);
+            }
           }}
           onKeyDown={(e) => {
             if (e.nativeEvent.isComposing) return;
             if (e.key === "Enter") {
               e.preventDefault();
-              add(matches[active] && text.trim() !== matches[active] && active > 0 ? matches[active] : text);
+              add(active >= 0 && matches[active] ? matches[active] : text);
             } else if (e.key === "ArrowDown" && matches.length) {
               e.preventDefault();
               setActive((a) => Math.min(matches.length - 1, a + 1));
             } else if (e.key === "ArrowUp" && matches.length) {
               e.preventDefault();
-              setActive((a) => Math.max(0, a - 1));
+              setActive((a) => Math.max(-1, a - 1));
             } else if (e.key === "Backspace" && !text && values.length) {
               onChange(values.slice(0, -1));
             }

@@ -16,12 +16,12 @@
       "migrations_dir": "migrations"
     }
   ],
+  // Workers AI: 키 없이 하루 1만 뉴런까지 무료인 예비 AI 엔진
+  "ai": { "binding": "AI" },
   // R2(사진 저장소)를 쓰려면 아래 주석을 풀고 버킷을 만드세요. 없으면 사진은 D1에 저장됩니다.
   // "r2_buckets": [{ "binding": "IMAGES", "bucket_name": "recipegt-images" }],
   "vars": {
     "APP_NAME": "레시피GT",
-    // 쉼표로 구분. 이 이메일로 가입/로그인하면 관리자가 됩니다. 비워 두면 첫 가입자가 관리자가 됩니다.
-    "ADMIN_EMAILS": "",
     // 앞에서부터 차례로 시도합니다. 모델마다 무료 한도가 따로라 여러 개를 두면 버티는 양이 늘어납니다.
     "GEMINI_MODELS": "gemini-3.8-flash,gemini-3.5-flash-lite,gemini-3.1-flash-lite",
     "GROQ_MODEL": "llama-3.3-70b-versatile",

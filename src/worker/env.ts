@@ -10,7 +10,6 @@ export interface AppEnv {
   ASSETS: Fetcher;
 
   APP_NAME: string;
-  ADMIN_EMAILS: string;
   GEMINI_MODELS: string;
   GROQ_MODEL: string;
   WORKERS_AI_MODEL: string;
@@ -18,6 +17,8 @@ export interface AppEnv {
   TURNSTILE_SITE_KEY: string;
   INSTA_HELPER_URL: string;
 
+  /** 쉼표로 구분한 관리자 이메일 (비밀값). 비워 두면 첫 가입자가 관리자 */
+  ADMIN_EMAILS?: string;
   AUTH_PEPPER?: string;
   GEMINI_API_KEY?: string;
   GROQ_API_KEY?: string;

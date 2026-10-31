@@ -147,7 +147,8 @@ export const requireAdmin: MiddlewareHandler<HonoEnv> = async (c, next) => {
 };
 
 export function adminEmails(env: AppEnv): string[] {
-  return env.ADMIN_EMAILS.split(",")
+  return (env.ADMIN_EMAILS ?? "")
+    .split(",")
     .map((e) => e.trim().toLowerCase())
     .filter(Boolean);
 }
