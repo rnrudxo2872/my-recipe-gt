@@ -1,7 +1,7 @@
 import { ArrowLeft, ArrowRight, Check, ListChecks, Pause, Play, Timer, X } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate, useParams, useSearchParams } from "react-router";
-import { detectStepMinutes, formatAmount } from "../../shared/recipe";
+import { amountText, detectStepMinutes, displayNote } from "../../shared/recipe";
 import { CookedSheet } from "../components/CookedSheet";
 import { TermText } from "../components/TermText";
 import { Sheet } from "../components/Sheet";
@@ -231,9 +231,9 @@ export function Cook() {
                 <span className="ing-name">
                   {ing.group && <span className="ing-note">{ing.group}</span>}
                   {ing.name}
-                  {ing.note && <span className="ing-note">{ing.note}</span>}
+                  {displayNote(ing.note) && <span className="ing-note">{displayNote(ing.note)}</span>}
                 </span>
-                <span className="ing-amount">{formatAmount(ing, factor)}</span>
+                <span className="ing-amount">{amountText(ing, factor)}</span>
               </button>
             </li>
           ))}

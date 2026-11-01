@@ -40,6 +40,9 @@ interface Job {
   aiCalls: number;
 }
 
+// 레시피 정리 규칙(프롬프트)을 바꾸면 이 시각을 올린다. 그 전에 정리해 둔 공용 캐시는 쓰지 않고 새로 정리한다.
+const CACHE_SINCE = Date.UTC(2026, 10, 1, 8, 0); // 2026-11-01 17:00 KST: 분량 추정·초보자용 단계
+
 function callAi(job: Job, env: AppEnv, task: Parameters<typeof runAi>[1]) {
   job.aiCalls++;
   return runAi(env, task);
@@ -164,10 +167,10 @@ async function runImport(env: AppEnv, user: SessionUser, input: ImportInput, sen
 
   const userImage = keyFromImageUrl(input.image) ? input.image! : null;
 
-  // 다른 사람이 이미 정리한 링크면 AI를 다시 부르지 않는다.
+  // 다른 사람이 이미 정리한 링크면 AI를 다시 부르지 않는다(정리 규칙을 바꾸기 전 결과는 빼고).
   if (source && !input.caption) {
-    const cached = await env.DB.prepare("SELECT content, image FROM extraction_cache WHERE source_key = ?1")
-      .bind(source.key)
+    const cached = await env.DB.prepare("SELECT content, image FROM extraction_cache WHERE source_key = ?1 AND created_at >= ?2")
+      .bind(source.key, CACHE_SINCE)
       .first<{ content: string; image: string | null }>();
     if (cached) {
       await useQuota(env, user, "import", { aiCost: false });
@@ -224,12 +227,15 @@ async function runImport(env: AppEnv, user: SessionUser, input: ImportInput, sen
     sourceKey: source?.key ?? null,
   });
   // 사용자가 붙여넣은 글로 만든 결과는 캐시에 넣지 않는다. 남이 아무 글이나 붙여 인기 링크의 결과를 바꿔치기할 수 있어서다.
-  // 이미 있는 캐시도 덮어쓰지 않는다.
+  // 이미 있는 캐시도 덮어쓰지 않는다. 다만 정리 규칙을 바꾸기 전에 만든 낡은 결과는 새 결과로 바꾼다.
   if (source && !input.caption) {
     await env.DB.prepare(
-      "INSERT OR IGNORE INTO extraction_cache (source_key, content, image, source_url, method, created_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+      `INSERT INTO extraction_cache (source_key, content, image, source_url, method, created_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6)
+       ON CONFLICT(source_key) DO UPDATE SET content = excluded.content, image = excluded.image, source_url = excluded.source_url,
+         method = excluded.method, created_at = excluded.created_at
+       WHERE extraction_cache.created_at < ?7`,
     )
-      .bind(source.key, JSON.stringify(result.content), result.image, source.url, result.method, Date.now())
+      .bind(source.key, JSON.stringify(result.content), result.image, source.url, result.method, Date.now(), CACHE_SINCE)
       .run();
   }
   await send({ type: "done", recipeId: id, cached: false });

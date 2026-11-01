@@ -27,7 +27,7 @@ import {
 import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router";
 import type { SubstituteResult } from "../../shared/api";
-import { formatAmount, formatQty, recipeToText, type Ingredient, type RecipeContent, type RecipeDetail, type RecipeVersion } from "../../shared/recipe";
+import { amountText, displayNote, formatAmount, formatQty, recipeToText, type Ingredient, type RecipeContent, type RecipeDetail, type RecipeVersion } from "../../shared/recipe";
 import { AddToPlanSheet } from "../components/AddToPlanSheet";
 import { CookedSheet } from "../components/CookedSheet";
 import { InstagramIcon, YouTubeIcon } from "../components/Icons";
@@ -113,10 +113,10 @@ function IngredientList(props: { ingredients: Ingredient[]; factor: number; miss
                 <span className="ing-name">
                   <span className="hl">{ing.name}</span>
                   {isMissing && <span className="ing-missing-label">없음</span>}
-                  {ing.note && <span className="ing-note">{ing.note}</span>}
+                  {displayNote(ing.note) && <span className="ing-note">{displayNote(ing.note)}</span>}
                   {ing.group && <span className="sr-only">({ing.group})</span>}
                 </span>
-                <span className="ing-amount">{formatAmount(ing, props.factor)}</span>
+                <span className="ing-amount">{amountText(ing, props.factor)}</span>
               </button>
             </li>
           </Fragment>

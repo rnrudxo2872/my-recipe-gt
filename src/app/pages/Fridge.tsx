@@ -4,7 +4,7 @@ import { useMemo, useState, type FormEvent } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router";
 import { FRIDGE_KINDS, formatStock, parseQuickAdd, stepFor, type Fridge as FridgeT, type FridgeItem, type FridgeKind, type FridgeState } from "../../shared/fridge";
 import { COMMON_INGREDIENTS, ingredientMatches, isStaple } from "../../shared/ingredients";
-import { formatAmount, type RecipeContent } from "../../shared/recipe";
+import { amountText, displayNote, type RecipeContent } from "../../shared/recipe";
 import { RecipeImage } from "../components/RecipeImage";
 import { TermText } from "../components/TermText";
 import { YouTubeIcon } from "../components/Icons";
@@ -688,9 +688,9 @@ function Find({ state }: { state: FridgeState }) {
                     <button type="button" tabIndex={-1} style={{ cursor: "default", minHeight: 44 }}>
                       <span className="ing-name">
                         {ing.name}
-                        {ing.note && <span className="ing-note">{ing.note}</span>}
+                        {displayNote(ing.note) && <span className="ing-note">{displayNote(ing.note)}</span>}
                       </span>
-                      <span className="ing-amount">{formatAmount(ing)}</span>
+                      <span className="ing-amount">{amountText(ing)}</span>
                     </button>
                   </li>
                 ))}

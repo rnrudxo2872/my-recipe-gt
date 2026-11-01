@@ -30,10 +30,22 @@ export function parseJsonLoose(text: string): unknown {
   }
 }
 
+// 응답이 없거나(시간 초과) 붐비는(503·429) 모델은 잠깐 순서를 뒤로 미룬다.
+// 같은 Worker 인스턴스 안에서만 기억하지만, 연달아 오는 요청이 매번 같은 모델에서 기다리는 일은 막는다.
+const COOL_MS = 3 * 60 * 1000;
+const cooling = new Map<string, number>();
+
 function geminiModels(env: AppEnv): string[] {
-  return env.GEMINI_MODELS.split(",")
+  const now = Date.now();
+  const list = env.GEMINI_MODELS.split(",")
     .map((m) => m.trim())
     .filter(Boolean);
+  return [...list.filter((m) => (cooling.get(m) ?? 0) < now), ...list.filter((m) => (cooling.get(m) ?? 0) >= now)];
+}
+
+function coolDown(model: string, e: unknown) {
+  const busy = e instanceof ProviderError ? e.status === 503 || e.status === 429 || e.status === 500 : e instanceof Error && e.name === "TimeoutError";
+  if (busy) cooling.set(model, Date.now() + COOL_MS);
 }
 
 async function callGemini(env: AppEnv, model: string, task: AiTask, minimal: boolean): Promise<unknown> {
@@ -56,7 +68,8 @@ async function callGemini(env: AppEnv, model: string, task: AiTask, minimal: boo
       contents: [{ role: "user", parts }],
       generationConfig,
     }),
-    signal: AbortSignal.timeout(hasVideo ? 150_000 : 60_000),
+    // 글은 보통 몇 초면 끝난다. 응답이 없는 모델에 오래 매달리지 않고 다음 모델로 넘어간다.
+    signal: AbortSignal.timeout(hasVideo ? 120_000 : 25_000),
   });
   if (!res.ok) throw new ProviderError(`gemini:${model}`, res.status, await res.text());
   const data = (await res.json()) as {
@@ -153,6 +166,7 @@ export async function runAi(env: AppEnv, task: AiTask): Promise<{ data: unknown;
           } catch (e) {
             // 스키마나 설정을 모델이 받아 주지 않으면 최소 설정으로 한 번 더
             if (e instanceof ProviderError && e.status === 400) return callGemini(env, model, task, true);
+            coolDown(model, e);
             throw e;
           }
         },
@@ -189,8 +203,10 @@ export async function runAi(env: AppEnv, task: AiTask): Promise<{ data: unknown;
       await recordProviderCall(env.DB, attempt.name).catch(() => {});
       return { data, provider: attempt.name };
     } catch (e) {
-      errors.push(e instanceof Error ? e.message : String(e));
-      // 키가 잘못됐거나 권한이 없는 경우도 다음 엔진으로 넘긴다.
+      const message = e instanceof Error ? `${e.name === "TimeoutError" ? "시간 초과 " : ""}${e.message}` : String(e);
+      errors.push(message);
+      // 키가 잘못됐거나 권한이 없는 경우도 다음 엔진으로 넘긴다. 어디서 막혔는지는 로그로 남긴다.
+      console.warn("AI 시도 실패", task.name, attempt.name, message.slice(0, 300));
     }
   }
   console.error("AI 실패", task.name, errors);

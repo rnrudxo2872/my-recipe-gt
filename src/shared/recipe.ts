@@ -190,6 +190,25 @@ export function formatAmount(ingredient: Pick<Ingredient, "qty" | "unit">, facto
   return `${formatQty(value)}${unit}`;
 }
 
+/** 분량을 AI가 짐작해서 적었는지(메모에 '추정') */
+export function isEstimated(ingredient: Pick<Ingredient, "qty" | "note">): boolean {
+  return ingredient.qty != null && ingredient.note.split(/s*,s*/).includes("추정");
+}
+
+/** 화면에 보일 메모. '추정'은 분량 앞 '약'으로 대신 보여 주므로 뺀다. */
+export function displayNote(note: string): string {
+  return note
+    .split(/s*,s*/)
+    .filter((x) => x && x !== "추정")
+    .join(", ");
+}
+
+/** 화면에 보일 분량. 짐작한 양은 '약 1큰술' */
+export function amountText(ingredient: Pick<Ingredient, "qty" | "unit" | "note">, factor = 1): string {
+  const text = formatAmount(ingredient, factor);
+  return text && isEstimated(ingredient) ? `약 ${text}` : text;
+}
+
 /**
  * '2큰술', '200 g', '1/2개', '약간' 같은 분량 입력을 qty/unit으로 나눈다.
  * 편집 화면에서 분량을 한 칸으로 입력받을 때 쓴다.
@@ -369,7 +388,8 @@ export function recipeToText(content: RecipeContent, sourceUrl?: string | null):
       group = ing.group;
       if (group) lines.push(`- ${group}`);
     }
-    lines.push(`${group ? "  " : ""}• ${ing.name} ${formatAmount(ing)}${ing.note ? ` (${ing.note})` : ""}`.trimEnd());
+    const note = displayNote(ing.note);
+    lines.push(`${group ? "  " : ""}• ${ing.name} ${amountText(ing)}${note ? ` (${note})` : ""}`.trimEnd());
   }
   lines.push("", "[만드는 법]");
   content.steps.forEach((step, i) => lines.push(`${i + 1}. ${step}`));
