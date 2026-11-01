@@ -1,9 +1,9 @@
 import { useQueryClient } from "@tanstack/react-query";
-import { CircleCheck, MailCheck, RotateCcw, TriangleAlert } from "lucide-react";
+import { CircleCheck, MailCheck, MailQuestionMark, RotateCcw, TriangleAlert } from "lucide-react";
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router";
 import { ApiError, api } from "../lib/api";
-import { useDocumentTitle, useMe } from "../lib/hooks";
+import { useConfig, useDocumentTitle, useMe } from "../lib/hooks";
 import { useToast } from "../lib/toast";
 
 /** 로컬 시험 모드에서 받은 인증 링크. 가입 직후 화면에서 보여 주려고 잠깐 보관한다. */
@@ -23,6 +23,26 @@ export function rememberDevLink(link: string | undefined) {
   } catch {
     // 저장소를 못 써도 다시 보내기로 받을 수 있다
   }
+}
+
+/** 레시퐁 메일은 스팸함으로 가기도 해서, 보낸 사람과 '스팸 아님' 누르는 법을 함께 알려 준다. */
+export function SpamHint() {
+  const sender = useConfig().data?.mailSender;
+  return (
+    <div className="notice spam-hint">
+      <MailQuestionMark aria-hidden="true" />
+      <div>
+        <p>
+          메일이 안 보이면 <strong>스팸함</strong>을 확인해 주세요. 거기 있다면 <strong>스팸 아님</strong>을 눌러 주세요. 다음 메일부터 받은편지함으로 와요.
+        </p>
+        {sender && (
+          <p className="spam-hint-from">
+            보낸 사람 <strong>{sender}</strong>
+          </p>
+        )}
+      </div>
+    </div>
+  );
 }
 
 function Brand() {
@@ -116,7 +136,7 @@ export function VerifyPending() {
       <p className="auth-lead">
         <strong>{me?.user.email}</strong>(으)로 인증 메일을 보냈어요.
         <br />
-        메일의 <strong>이메일 인증하기</strong> 버튼을 누르면 바로 시작할 수 있어요.
+        메일 속 링크를 열면 바로 시작할 수 있어요.
       </p>
 
       {error && (
@@ -139,8 +159,9 @@ export function VerifyPending() {
         {cooldown > 0 ? `인증 메일 다시 보내기 (${cooldown}초)` : "인증 메일 다시 보내기"}
       </button>
       <p className="help" style={{ textAlign: "center", marginTop: 12 }}>
-        메일이 안 보이면 스팸함도 확인해 주세요. 인증하면 이 화면은 저절로 넘어가요.
+        인증하면 이 화면은 저절로 넘어가요.
       </p>
+      <SpamHint />
 
       <div className="card" style={{ marginTop: 24 }}>
         {editing ? (

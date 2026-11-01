@@ -5,6 +5,7 @@ import { Link, useNavigate, useSearchParams } from "react-router";
 import { ApiError, api } from "../lib/api";
 import { useDocumentTitle } from "../lib/hooks";
 import { useToast } from "../lib/toast";
+import { SpamHint } from "./Verify";
 
 function Brand() {
   return (
@@ -59,6 +60,7 @@ export function Forgot() {
           <Link to="/login" className="btn btn-block">
             로그인으로 돌아가기
           </Link>
+          <SpamHint />
         </>
       ) : (
         <>

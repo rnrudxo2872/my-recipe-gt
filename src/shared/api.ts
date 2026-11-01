@@ -74,6 +74,8 @@ export interface AppConfig {
   emailVerification: boolean;
   /** 비밀번호 찾기 메일을 보낼 수 있는지 */
   passwordReset: boolean;
+  /** 메일 보내는 주소(이름 없이 주소만). 스팸함에서 찾기 쉽게 화면에 보여 준다. 메일을 안 보내면 "" */
+  mailSender: string;
 }
 
 export type ImportStage = "start" | "cache" | "meta" | "description" | "video" | "caption" | "page" | "text" | "image" | "save";

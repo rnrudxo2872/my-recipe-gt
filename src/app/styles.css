@@ -2978,3 +2978,28 @@ li.is-now .stage-icon {
   font-weight: 700;
   color: var(--ink);
 }
+
+.spam-hint {
+  margin-top: 16px;
+  text-align: left;
+}
+
+.spam-hint p {
+  margin: 0;
+}
+
+.spam-hint p + p {
+  margin-top: 6px;
+}
+
+.spam-hint-from {
+  color: var(--ink-3);
+  font-size: 13px;
+  word-break: break-all;
+}
+
+.spam-hint-from strong {
+  margin-left: 4px;
+  color: var(--ink-2);
+  font-weight: 600;
+}

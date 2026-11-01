@@ -17,6 +17,12 @@ export function mailMode(env: AppEnv): MailMode {
   return "off";
 }
 
+/** 실제로 보내는 주소(이름 없이). 시험 모드나 꺼져 있으면 "" */
+export function mailSender(env: AppEnv): string {
+  const mode = mailMode(env);
+  return mode === "gmail" || mode === "resend" ? parseAddress(env.MAIL_FROM!).address : "";
+}
+
 export function verificationRequired(env: AppEnv): boolean {
   return mailMode(env) !== "off";
 }
@@ -31,7 +37,7 @@ interface Mail {
   text: string;
 }
 
-async function sendMail(env: AppEnv, mail: Mail): Promise<void> {
+async function sendMail(env: AppEnv, mail: Mail, host: string): Promise<void> {
   const mode = mailMode(env);
   if (mode === "off") throw new ApiError(503, "mail_off", "메일 발송이 설정되지 않았어요. 관리자에게 알려 주세요.");
   const usage = await getUsage(env.DB, 0);
@@ -50,7 +56,7 @@ async function sendMail(env: AppEnv, mail: Mail): Promise<void> {
     const socket = connect({ hostname: "smtp.gmail.com", port: 465 }, { secureTransport: "on", allowHalfOpen: false });
     try {
       // 구글은 앱 비밀번호를 4자리씩 띄어서 보여 준다. 띄어쓰기는 빼고 쓴다.
-      await sendSmtp(socket, { user: from.address, password: env.GMAIL_APP_PASSWORD!.replace(/\s+/g, "") }, { from, ...mail });
+      await sendSmtp(socket, { user: from.address, password: env.GMAIL_APP_PASSWORD!.replace(/\s+/g, "") }, { from, ...mail }, { heloHost: host });
     } catch (e) {
       console.error("메일 발송 실패(Gmail)", e instanceof Error ? e.message : String(e));
       throw new ApiError(502, "mail_failed", "메일을 보내지 못했어요. 잠시 뒤에 다시 시도해 주세요.");
@@ -103,56 +109,42 @@ export async function consumeEmailToken(db: D1Database, token: string, kind: Tok
 }
 
 /* ───────── 메일 내용 ───────── */
+// 사람이 쓴 메일처럼 짧은 글과 링크만 둔다. 로고 이미지와 큰 버튼은 피싱 메일과 닮아 스팸으로 가기 쉬워서 뺐다.
+// 링크는 주소를 그대로 보여 준다(보이는 글자와 실제 주소가 다르면 의심받는다).
 
 function escapeHtml(s: string): string {
   return s.replace(/[&<>"']/g, (ch) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[ch]!);
 }
 
-function layout(base: string, heading: string, lines: string[], button: { label: string; href: string }, foot: string): string {
-  const paragraphs = lines.map((l) => `<p style="margin:0 0 12px;font-size:16px;line-height:1.6;color:#6e5646">${l}</p>`).join("");
-  return `<!doctype html><html lang="ko"><body style="margin:0;padding:0;background:#fff9ee">
-<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#fff9ee;padding:32px 16px">
-<tr><td align="center">
-<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:480px;background:#ffffff;border-radius:20px;border:1px solid #f1e3cb">
-<tr><td style="padding:32px 28px;font-family:-apple-system,BlinkMacSystemFont,'Apple SD Gothic Neo','Malgun Gothic',sans-serif">
-<img src="${base}/icons/logo-96.png" width="56" height="56" alt="레시퐁" style="display:block;border-radius:14px;margin-bottom:20px">
-<h1 style="margin:0 0 16px;font-size:22px;color:#3a2416">${heading}</h1>
-${paragraphs}
-<p style="margin:24px 0"><a href="${button.href}" style="display:inline-block;padding:14px 24px;border-radius:14px;background:#fdbf46;border:2px solid #3a2416;color:#3a2416;font-weight:700;font-size:16px;text-decoration:none">${button.label}</a></p>
-<p style="margin:0 0 8px;font-size:13px;line-height:1.6;color:#9d8877">버튼이 안 눌리면 이 주소를 브라우저에 붙여넣어 주세요.<br><a href="${button.href}" style="color:#9d8877;word-break:break-all">${button.href}</a></p>
-<p style="margin:16px 0 0;font-size:13px;line-height:1.6;color:#9d8877">${foot}</p>
-</td></tr></table>
-</td></tr></table></body></html>`;
-}
-
-export function verifyMail(base: string, name: string, link: string): Omit<Mail, "to"> {
-  const who = escapeHtml(name);
+function compose(subject: string, intro: string[], link: string, outro: string[]): Omit<Mail, "to"> {
+  const p = (s: string) => `<p>${escapeHtml(s)}</p>`;
+  const href = escapeHtml(link);
   return {
-    subject: "[레시퐁] 이메일 인증",
-    html: layout(
-      base,
-      "이메일을 인증해 주세요",
-      [`${who}님, 레시퐁에 가입해 주셔서 고마워요.`, "아래 버튼을 누르면 가입이 끝나고 바로 레시피를 정리할 수 있어요."],
-      { label: "이메일 인증하기", href: link },
-      "링크는 24시간 동안 쓸 수 있어요. 직접 가입하지 않았다면 이 메일은 무시해 주세요.",
-    ),
-    text: `${name}님, 레시퐁에 가입해 주셔서 고마워요.\n아래 링크를 열면 가입이 끝나요(24시간 동안 유효).\n\n${link}\n\n직접 가입하지 않았다면 이 메일은 무시해 주세요.`,
+    subject,
+    html: `<!doctype html><html lang="ko"><body style="font-size:15px;line-height:1.6">${intro.map(p).join("")}<p><a href="${href}">${href}</a></p>${outro.map(p).join("")}</body></html>`,
+    text: [...intro, "", link, "", ...outro].join("\n"),
   };
 }
 
-export function resetMail(base: string, name: string, link: string): Omit<Mail, "to"> {
-  const who = escapeHtml(name);
-  return {
-    subject: "[레시퐁] 비밀번호 재설정",
-    html: layout(
-      base,
-      "비밀번호를 새로 정해 주세요",
-      [`${who}님, 비밀번호를 바꾸는 링크예요.`, "아래 버튼을 눌러 새 비밀번호를 정하면, 다른 기기에서 로그인한 것은 모두 풀려요."],
-      { label: "비밀번호 새로 정하기", href: link },
-      "링크는 1시간 동안 쓸 수 있어요. 요청하지 않았다면 이 메일은 무시해 주세요. 비밀번호는 바뀌지 않아요.",
-    ),
-    text: `${name}님, 비밀번호를 바꾸는 링크예요(1시간 동안 유효).\n\n${link}\n\n요청하지 않았다면 이 메일은 무시해 주세요.`,
-  };
+export function verifyMail(name: string, link: string): Omit<Mail, "to"> {
+  return compose(
+    "[레시퐁] 이메일 인증",
+    [`${name}님, 레시퐁에 가입해 주셔서 고마워요.`, "아래 링크를 열면 가입이 끝나요. 링크는 24시간 동안 쓸 수 있어요."],
+    link,
+    ["직접 가입하지 않았다면 이 메일은 무시해 주세요.", "레시퐁 드림"],
+  );
+}
+
+export function resetMail(name: string, link: string): Omit<Mail, "to"> {
+  return compose(
+    "[레시퐁] 비밀번호 재설정",
+    [
+      `${name}님, 비밀번호를 새로 정하는 링크예요.`,
+      "링크를 열어 새 비밀번호를 정하면 다른 기기에서 로그인한 것은 모두 풀려요. 링크는 1시간 동안 쓸 수 있어요.",
+    ],
+    link,
+    ["요청하지 않았다면 이 메일은 무시해 주세요. 비밀번호는 바뀌지 않아요.", "레시퐁 드림"],
+  );
 }
 
 /* ───────── 보내기 ───────── */
@@ -164,7 +156,7 @@ export async function sendVerification(c: Ctx, user: { id: number; email: string
   const token = await createEmailToken(c.env.DB, user.id, "verify", 24 * 60 * 60 * 1000);
   const base = appUrl(c);
   const link = `${base}/verify?token=${token}`;
-  await sendMail(c.env, { to: user.email, ...verifyMail(base, user.name, link) });
+  await sendMail(c.env, { to: user.email, ...verifyMail(user.name, link) }, new URL(base).hostname);
   return mailMode(c.env) === "mock" ? link : undefined;
 }
 
@@ -172,6 +164,6 @@ export async function sendReset(c: Ctx, user: { id: number; email: string; name:
   const token = await createEmailToken(c.env.DB, user.id, "reset", 60 * 60 * 1000);
   const base = appUrl(c);
   const link = `${base}/reset?token=${token}`;
-  await sendMail(c.env, { to: user.email, ...resetMail(base, user.name, link) });
+  await sendMail(c.env, { to: user.email, ...resetMail(user.name, link) }, new URL(base).hostname);
   return mailMode(c.env) === "mock" ? link : undefined;
 }

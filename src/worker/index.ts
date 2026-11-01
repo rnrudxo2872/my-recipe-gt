@@ -4,7 +4,7 @@ import { aiReady } from "./ai/providers";
 import { requireVerified } from "./auth";
 import { ApiError, type AppEnv, type HonoEnv } from "./env";
 import { cleanOrphanImages, getImage, imageUrl, putImage } from "./images";
-import { mailMode, verificationRequired } from "./mail";
+import { mailMode, mailSender, verificationRequired } from "./mail";
 import { isUnlimited, useQuota } from "./quota";
 import { account } from "./routes/account";
 import { admin } from "./routes/admin";
@@ -35,6 +35,7 @@ app.get("/api/config", (c) =>
     aiReady: aiReady(c.env),
     emailVerification: verificationRequired(c.env),
     passwordReset: mailMode(c.env) !== "off",
+    mailSender: mailSender(c.env),
   }),
 );
 
