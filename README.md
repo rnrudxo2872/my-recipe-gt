@@ -47,6 +47,7 @@ Cloudflare Worker (하나로 화면 + API)
   ├─ 같은 링크는 한 번만 분석하고 모든 사용자가 결과를 함께 씀
   │  (사용자가 붙여넣은 글로 만든 결과는 함께 쓰지 않음)
   └─ 인스타 링크 → (선택) 폰서버 도우미 → 캡션
+     (폰이 임시 터널 주소를 10분마다 알려 옴 → settings 표에 보관, 30분 소식 없으면 꺼진 것으로 봄)
 ```
 
 - 사진은 Workers KV에 저장합니다(카드 등록 없이 1GB 무료). R2(10GB)는 활성화할 때 카드 등록을 요구해서 기본값에서 뺐고, `wrangler.jsonc`의 R2 주석을 풀면 R2를 씁니다. 레시피에 붙지 않은 사진은 매일 새벽 정리합니다.
@@ -137,7 +138,7 @@ Cloudflare 대시보드 → Workers & Pages → recipong → Settings → **Buil
 | `GEMINI_MODELS` | 차례로 시도할 Gemini 모델들. 모델이 바뀌면 여기만 고치면 됩니다. |
 | `GROQ_MODEL`, `WORKERS_AI_MODEL`, `OPENROUTER_MODEL` | 예비 엔진 모델 |
 | `TURNSTILE_SITE_KEY` | 가입 봇 차단(선택). 비밀 키는 `TURNSTILE_SECRET`로 |
-| `INSTA_HELPER_URL` | 폰서버 인스타 도우미 주소(선택, [helper/README.md](helper/README.md)) |
+| `INSTA_HELPER_URL` | 폰서버 인스타 도우미의 **고정** 주소(선택). 비우면 도우미가 알려 오는 임시 터널 주소를 씁니다([helper/README.md](helper/README.md)) |
 | `APP_URL` | 메일 속 링크 주소(개인 도메인을 붙였을 때). 비우면 접속한 주소를 씁니다. |
 
 비밀값(`npx wrangler secret put 이름`):
@@ -153,7 +154,7 @@ Cloudflare 대시보드 → Workers & Pages → recipong → Settings → **Buil
 | `GROQ_API_KEY`, `OPENROUTER_API_KEY` |  | 예비 AI |
 | `YOUTUBE_API_KEY` | 권장 | 설명란과 영상 길이를 안정적으로 읽습니다(무료 하루 1만 건). 없으면 공개 페이지를 읽는데, 클라우드 IP에서 막히면 영상 길이를 몰라 **일반 계정은 영상 분석을 못 합니다**(설명란·자막 붙여넣기는 됨). |
 | `TURNSTILE_SECRET` |  | 가입 봇 차단 |
-| `INSTA_HELPER_TOKEN` |  | 폰서버 도우미와 맞춘 토큰 |
+| `INSTA_HELPER_TOKEN` |  | 폰서버 도우미와 맞춘 토큰. 도우미가 주소를 알릴 때(`POST /api/insta-helper/announce`)와 레시퐁이 도우미에 물을 때 씁니다 |
 
 ## 무료로 버티는 규모와 주의점
 
@@ -168,7 +169,7 @@ src/shared/   화면과 서버가 함께 쓰는 로직 (레시피 정리, 분량
 src/worker/   Cloudflare Worker: 인증, 한도, AI, 링크 추출, API
 src/app/      React 화면
 migrations/   D1 표 정의
-helper/       폰서버 인스타 도우미 (Termux + yt-dlp)
+helper/       폰서버 인스타 도우미 (Termux + Node, 임시 터널 자동 관리)
 scripts/      setup(첫 배포), smoke(전체 흐름 점검), make-icons(icon.png → 앱 아이콘)
 copy.md       화면별 구성 요소와 문구 (디자인 의뢰용)
 ```

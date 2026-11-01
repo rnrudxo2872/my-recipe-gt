@@ -6,6 +6,7 @@ import { kstDay } from "../../shared/time";
 import { providerStatus } from "../ai/providers";
 import { hashPassword, requireAdmin, requireVerified, toPublicUser } from "../auth";
 import { ApiError, isMock, randomId, readJson, type HonoEnv } from "../env";
+import { helperUrl } from "../insta-helper";
 import { mailMode } from "../mail";
 import { clearPolicyCache, getPolicy, mergePolicy, setStatus } from "../quota";
 import { deleteUserData } from "./account";
@@ -53,7 +54,7 @@ admin.get("/overview", async (c) => {
       mail: mailMode(c.env),
       ...providers,
       youtubeApi: Boolean(c.env.YOUTUBE_API_KEY),
-      instaHelper: Boolean(c.env.INSTA_HELPER_URL),
+      instaHelper: Boolean(await helperUrl(c.env)),
       turnstile: Boolean(c.env.TURNSTILE_SECRET && c.env.TURNSTILE_SITE_KEY),
       mock: isMock(c.env),
     },

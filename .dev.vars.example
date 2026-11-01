@@ -20,7 +20,7 @@ YOUTUBE_API_KEY=
 # 선택: 가입 봇 차단 (Cloudflare Turnstile 비밀 키, 사이트 키는 wrangler.jsonc vars에)
 TURNSTILE_SECRET=
 
-# 선택: 폰서버 인스타 도우미 토큰 (helper/insta_helper.py 실행 시 지정한 값)
+# 선택: 폰서버 인스타 도우미 토큰 (폰 ~/recipong-helper/.env 의 INSTA_HELPER_TOKEN과 같은 값)
 INSTA_HELPER_TOKEN=
 
 # 이메일 인증·비밀번호 찾기 메일. 보내는 주소와, Gmail 앱 비밀번호 또는 Resend 키(내 도메인 필요)

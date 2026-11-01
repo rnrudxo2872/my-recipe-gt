@@ -2,8 +2,9 @@ import { Hono } from "hono";
 import type { AppConfig } from "../shared/api";
 import { aiReady } from "./ai/providers";
 import { requireVerified } from "./auth";
-import { ApiError, type AppEnv, type HonoEnv } from "./env";
+import { ApiError, type AppEnv, type HonoEnv, readJson } from "./env";
 import { cleanOrphanImages, getImage, imageUrl, putImage } from "./images";
+import { helperUrl, parseHelperUrl, sameSecret, saveAnnouncedHelper } from "./insta-helper";
 import { mailMode, mailSender, verificationRequired } from "./mail";
 import { isUnlimited, useQuota } from "./quota";
 import { account } from "./routes/account";
@@ -28,17 +29,31 @@ app.use("/api/*", async (c, next) => {
   c.header("cache-control", "no-store");
 });
 
-app.get("/api/config", (c) =>
+app.get("/api/config", async (c) =>
   c.json<AppConfig>({
     appName: c.env.APP_NAME,
     turnstileSiteKey: c.env.TURNSTILE_SECRET ? c.env.TURNSTILE_SITE_KEY : "",
-    instaHelper: Boolean(c.env.INSTA_HELPER_URL),
+    instaHelper: Boolean(await helperUrl(c.env)),
     aiReady: aiReady(c.env),
     emailVerification: verificationRequired(c.env),
     passwordReset: mailMode(c.env) !== "off",
     mailSender: mailSender(c.env),
   }),
 );
+
+// 폰서버 인스타 도우미가 임시 터널 주소를 알려 온다(켜질 때와 10분마다). 토큰이 맞아야 받는다.
+app.post("/api/insta-helper/announce", async (c) => {
+  const token = c.env.INSTA_HELPER_TOKEN;
+  if (!token) throw new ApiError(404, "not_found", "도우미 토큰이 설정되지 않았어요.");
+  if (!(await sameSecret(c.req.header("authorization") ?? "", `Bearer ${token}`))) {
+    throw new ApiError(401, "unauthorized", "도우미 토큰이 맞지 않아요.");
+  }
+  const body = await readJson<{ url?: unknown }>(c);
+  const url = parseHelperUrl(body.url, c.env.INSTA_HELPER_URL);
+  if (!url) throw new ApiError(400, "bad_url", "받을 수 없는 도우미 주소예요.");
+  await saveAnnouncedHelper(c.env, url);
+  return c.json({ ok: true });
+});
 
 app.route("/api", account);
 app.route("/api/recipes", recipes);
