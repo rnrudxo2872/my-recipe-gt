@@ -5,7 +5,7 @@ import { Hono } from "hono";
 import type { ImportEvent, ImportStage } from "../../shared/api";
 import { detectSource, type DetectedSource } from "../../shared/links";
 import { isUsableRecipe, normalizeRecipe, type RecipeContent, type SourceType } from "../../shared/recipe";
-import { extractTextTask, extractVideoTask } from "../ai/prompts";
+import { extractTextTask, extractVideoTask, placeFilledTip } from "../ai/prompts";
 import { runAi, videoReady } from "../ai/providers";
 import { requireVerified } from "../auth";
 import { ApiError, readJson, type AppEnv, type HonoEnv, type SessionUser } from "../env";
@@ -48,9 +48,9 @@ function callAi(job: Job, env: AppEnv, task: Parameters<typeof runAi>[1]) {
   return runAi(env, task);
 }
 
-function fromAi(data: unknown): RecipeContent | null {
+function fromAi(data: unknown, fix: (c: RecipeContent) => RecipeContent = (c) => c): RecipeContent | null {
   if (data && typeof data === "object" && (data as Record<string, unknown>).is_recipe === false) return null;
-  const content = normalizeRecipe(data);
+  const content = fix(normalizeRecipe(data));
   return isUsableRecipe(content) ? content : null;
 }
 
@@ -138,9 +138,10 @@ async function extractInstagram(
     throw new NeedCaption("인스타그램이 바깥에서는 캡션을 보여 주지 않아서 자동으로 못 읽었어요. 캡션을 복사해 붙여넣어 주세요.");
   }
   await stage(send, "caption", "캡션에서 레시피를 찾고 있어요");
-  const { data } = await callAi(job, env, extractTextTask({ sourceLabel: "인스타그램 게시물 캡션", text: caption }));
-  const content = fromAi(data);
-  if (!content) throw new NeedCaption("캡션에 레시피가 없어요. 레시피가 댓글이나 영상 속에 있다면 그 내용을 붙여넣어 주세요.");
+  // 캡션에 양념 분량만 있는 릴스가 많다. 영상은 볼 수 없으니 빈 곳(주재료·순서)은 흔한 방법으로 채운다.
+  const { data } = await callAi(job, env, extractTextTask({ sourceLabel: "인스타그램 게시물 캡션", text: caption, fillGaps: true }));
+  const content = fromAi(data, placeFilledTip);
+  if (!content) throw new NeedCaption("캡션에서 재료나 분량을 찾지 못했어요. 레시피가 댓글이나 영상 속에 있다면 그 내용을 붙여넣어 주세요.");
   let image: string | null = null;
   if (remoteImage && !input.image) {
     await stage(send, "image", "사진을 저장하고 있어요");

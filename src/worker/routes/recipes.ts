@@ -9,7 +9,7 @@ import { requireVerified } from "../auth";
 import { ApiError, readJson, type HonoEnv } from "../env";
 import { deleteImageIfUnused, keyFromImageUrl } from "../images";
 import { assertRecipeRoom, useQuota } from "../quota";
-import { createRecipe, getOwnedRecipe, listVersions, saveVersion, SUMMARY_COLUMNS, toDetail, toSummary, type RecipeRow } from "../recipes-db";
+import { createRecipe, getOwnedRecipe, listVersions, loadDetail, saveVersion, SUMMARY_COLUMNS, toDetail, toSummary, type RecipeRow } from "../recipes-db";
 
 export const recipes = new Hono<HonoEnv>();
 recipes.use("*", requireVerified);
@@ -49,7 +49,7 @@ recipes.post("/", async (c) => {
 
 recipes.get("/:id", async (c) => {
   const row = await getOwnedRecipe(c.env, c.get("user").id, c.req.param("id"));
-  return c.json({ recipe: toDetail(row) });
+  return c.json({ recipe: await loadDetail(c.env, row) });
 });
 
 recipes.put("/:id", async (c) => {
@@ -61,7 +61,7 @@ recipes.put("/:id", async (c) => {
   const note = String(body.note ?? "").trim().slice(0, 80) || (kind === "edit" ? "직접 수정" : kind === "ai" ? "AI로 맛 조정" : "재료 바꿈");
   await useQuota(c.env, user, "save");
   await saveVersion(c.env, row, content, note, kind);
-  return c.json({ recipe: toDetail(await getOwnedRecipe(c.env, user.id, row.id)) });
+  return c.json({ recipe: await loadDetail(c.env, await getOwnedRecipe(c.env, user.id, row.id)) });
 });
 
 recipes.patch("/:id", async (c) => {
@@ -76,7 +76,7 @@ recipes.patch("/:id", async (c) => {
     await c.env.DB.prepare("UPDATE recipes SET image = ?1, updated_at = ?2 WHERE id = ?3").bind(image, Date.now(), row.id).run();
     if (row.image !== image) await deleteImageIfUnused(c.env, row.image, user.id);
   }
-  return c.json({ recipe: toDetail(await getOwnedRecipe(c.env, user.id, row.id)) });
+  return c.json({ recipe: await loadDetail(c.env, await getOwnedRecipe(c.env, user.id, row.id)) });
 });
 
 recipes.delete("/:id", async (c) => {
@@ -115,7 +115,7 @@ recipes.post("/:id/versions/:vid/restore", async (c) => {
   if (!v) throw new ApiError(404, "not_found", "그 버전을 찾을 수 없어요.");
   await useQuota(c.env, user, "save");
   await saveVersion(c.env, row, normalizeRecipe(JSON.parse(v.content)), `'${v.note}'(으)로 되돌림`.slice(0, 80), "restore");
-  return c.json({ recipe: toDetail(await getOwnedRecipe(c.env, user.id, row.id)) });
+  return c.json({ recipe: await loadDetail(c.env, await getOwnedRecipe(c.env, user.id, row.id)) });
 });
 
 recipes.post("/:id/substitutes", async (c) => {

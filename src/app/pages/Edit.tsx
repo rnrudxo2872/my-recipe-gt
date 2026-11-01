@@ -125,7 +125,8 @@ function Editor({ id, initial }: { id?: string; initial: Draft }) {
   const [error, setError] = useState("");
   const fileRef = useRef<HTMLInputElement>(null);
   const initialJson = useMemo(() => JSON.stringify({ c: fromDraft(initial), i: initial.image }), [initial]);
-  const dirty = JSON.stringify({ c: fromDraft(d), i: d.image }) !== initialJson;
+  // 메모만 적어도 저장할 수 있다(내용은 그대로 두고 메모를 남기려는 경우).
+  const dirty = JSON.stringify({ c: fromDraft(d), i: d.image }) !== initialJson || Boolean(id && note.trim());
 
   useEffect(() => {
     if (!dirty) return;
@@ -172,7 +173,7 @@ function Editor({ id, initial }: { id?: string; initial: Draft }) {
       let targetId = id;
       if (id) {
         const changedContent = JSON.stringify(content) !== JSON.stringify(fromDraft(initial));
-        if (changedContent) await api.saveRecipe(id, content, note.trim() || "직접 수정");
+        if (changedContent || note.trim()) await api.saveRecipe(id, content, note.trim() || "직접 수정");
         if (d.image !== initial.image) await api.patchRecipe(id, { image: d.image });
       } else {
         targetId = (await api.createRecipe({ content, image: d.image })).id;
@@ -354,7 +355,7 @@ function Editor({ id, initial }: { id?: string; initial: Draft }) {
             <label className="field">
               <span className="label">무엇을 바꿨나요? (선택)</span>
               <input className="input" value={note} maxLength={80} placeholder="예: 소금 줄이고 청양고추 추가" onChange={(e) => setNote(e.target.value)} />
-              <span className="help">버전 기록에 이 메모로 남아요. 원본은 언제든 되돌릴 수 있어요.</span>
+              <span className="help">레시피 화면의 '내가 바꾼 점'과 버전 기록에 남아요. 원본은 언제든 되돌릴 수 있어요.</span>
             </label>
           </section>
         )}

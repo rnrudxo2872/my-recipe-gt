@@ -1267,6 +1267,41 @@ button {
   text-underline-offset: 3px;
 }
 
+/* 직접 수정할 때 남긴 '무엇을 바꿨나요?' 메모 */
+.change-notes {
+  margin-top: 20px;
+  padding: 14px 18px;
+  border-radius: var(--r-card);
+  background: var(--brand-tint);
+  border: 1px solid var(--brand-soft);
+}
+
+.change-notes h2 {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--brand-ink);
+}
+
+.change-notes h2 svg {
+  width: 16px;
+  height: 16px;
+}
+
+.change-notes ul {
+  margin: 6px 0 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  color: var(--ink);
+  font-size: 15px;
+  overflow-wrap: anywhere;
+}
+
 .section {
   margin-top: 32px;
 }

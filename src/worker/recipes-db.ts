@@ -48,14 +48,39 @@ export function toSummary(row: Pick<RecipeRow, "id" | "title" | "image" | "sourc
   };
 }
 
-export function toDetail(row: RecipeRow): RecipeDetail {
+export function toDetail(row: RecipeRow, changeNotes: string[] = []): RecipeDetail {
   let content: RecipeContent;
   try {
     content = normalizeRecipe(JSON.parse(row.content));
   } catch {
     content = normalizeRecipe({ title: row.title });
   }
-  return { ...toSummary(row), content, sourceUrl: row.source_url, versionCount: row.version_count };
+  return { ...toSummary(row), content, sourceUrl: row.source_url, versionCount: row.version_count, changeNotes };
+}
+
+// 메모를 비워 두고 저장하면 붙는 기본 문구. 레시피 화면의 '내가 바꾼 점'에는 띄우지 않는다.
+const DEFAULT_NOTES = new Set(["직접 수정", "AI로 맛 조정", "재료 바꿈"]);
+
+/**
+ * 원본에서 지금 버전까지 사용자가 남긴 메모(최신 것부터, 같은 문구는 한 번).
+ * versions는 최신 순. 되돌린 적이 있으면 그 뒤에 남긴 것만 본다(그 앞 메모는 지금 내용과 맞지 않을 수 있어서).
+ */
+export function changeNotesOf(versions: { note: string; kind: RecipeVersion["kind"] }[]): string[] {
+  const notes: string[] = [];
+  for (const v of versions) {
+    if (v.kind === "original" || v.kind === "restore") break;
+    const note = v.note.trim();
+    if (note && !DEFAULT_NOTES.has(note) && !notes.includes(note)) notes.push(note);
+  }
+  return notes;
+}
+
+/** 레시피 화면에 보낼 내용: 레시피 + 지금 버전까지 남긴 메모 */
+export async function loadDetail(env: AppEnv, row: RecipeRow): Promise<RecipeDetail> {
+  const { results } = await env.DB.prepare("SELECT note, kind FROM recipe_versions WHERE recipe_id = ?1 ORDER BY id DESC LIMIT ?2")
+    .bind(row.id, MAX_VERSIONS)
+    .all<{ note: string; kind: RecipeVersion["kind"] }>();
+  return toDetail(row, changeNotesOf(results));
 }
 
 function derived(content: RecipeContent) {

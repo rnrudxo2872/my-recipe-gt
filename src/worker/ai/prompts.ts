@@ -66,11 +66,33 @@ const RECIPE_RULES = `규칙:
 
 const EDITOR = "당신은 한국 가정요리 레시피를 정리하는 편집자예요. 답은 반드시 JSON 하나로만 해요.";
 
-export function extractTextTask(input: { sourceLabel: string; title?: string; text: string }): AiTask {
+export const FILLED_TIP = "글에 없던 재료와 순서는 흔한 방법으로 채웠어요. 영상과 다르면 직접 수정해 주세요.";
+
+// 짧은 영상에 붙은 글(인스타 캡션)은 양념 분량만 적고 나머지는 영상으로 보여 주는 일이 많다.
+// 영상을 직접 볼 수 없으니, 적힌 것은 그대로 살리고 빈 곳은 흔한 방법으로 채운다.
+const FILL_GAPS_RULES = `- 이 글은 짧은 요리 영상에 붙은 글이라 레시피가 일부만 적혀 있을 수 있어요. 재료나 양념의 분량이 하나라도 적혀 있으면 is_recipe를 true로 해요.
+  · 문구·해시태그에서 어떤 요리인지 짐작되면 title은 그 요리 이름으로 하고, 글에 없는 주재료를 보통 양으로 채워 note 맨 앞에 "추정"이라고 적어요. 짐작이 안 되면 적힌 양념(소스) 레시피로 정리해요.
+  · 만드는 순서가 없으면 그 요리를 만드는 흔한 순서로 steps를 채워요.
+  · 글에 없던 재료나 순서를 채웠으면 tips 맨 앞에 "${FILLED_TIP}"를 넣어요.
+- 요리와 관계없는 글이면 is_recipe를 false로 해요.`;
+
+/** 작은 모델은 '채웠어요' 안내를 만드는 법 칸에 넣기도 해서, 코드에서 팁 맨 앞으로 옮긴다. */
+export function placeFilledTip(content: RecipeContent): RecipeContent {
+  const isNotice = (s: string) => s.includes("흔한 방법으로 채웠어요");
+  if (!content.steps.some(isNotice) && !content.tips.some(isNotice)) return content;
+  return {
+    ...content,
+    steps: content.steps.filter((s) => !isNotice(s)),
+    tips: [FILLED_TIP, ...content.tips.filter((t) => !isNotice(t))],
+  };
+}
+
+export function extractTextTask(input: { sourceLabel: string; title?: string; text: string; fillGaps?: boolean }): AiTask {
   const header = [`자료 종류: ${input.sourceLabel}`, input.title ? `제목: ${input.title}` : ""].filter(Boolean).join("\n");
+  const judge = input.fillGaps ? FILL_GAPS_RULES : "- 글이 요리 레시피가 아니거나 재료·순서를 알 수 없으면 is_recipe를 false로 해요.";
   return {
     name: "extract",
-    system: `${EDITOR}\n주어진 글에서 레시피를 뽑아 이 형식으로 답해요:\n${RECIPE_SHAPE}\n${RECIPE_RULES}\n- 글이 요리 레시피가 아니거나 재료·순서를 알 수 없으면 is_recipe를 false로 해요.`,
+    system: `${EDITOR}\n주어진 글에서 레시피를 뽑아 이 형식으로 답해요:\n${RECIPE_SHAPE}\n${RECIPE_RULES}\n${judge}`,
     parts: [{ text: `${header}\n\n${input.text.slice(0, 20000)}` }],
     schema: recipeSchema,
     temperature: 0.2,

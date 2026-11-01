@@ -279,6 +279,20 @@ export function RecipePage() {
             </div>
             <SourceLink recipe={recipe} />
 
+            {(recipe.changeNotes ?? []).length > 0 && (
+              <section className="change-notes" aria-labelledby="change-title">
+                <h2 id="change-title">
+                  <Pencil aria-hidden="true" />
+                  내가 바꾼 점
+                </h2>
+                <ul>
+                  {recipe.changeNotes.map((n) => (
+                    <li key={n}>{n}</li>
+                  ))}
+                </ul>
+              </section>
+            )}
+
             <section className="section" aria-labelledby="ing-title">
               <div className="section-head">
                 <h2 id="ing-title">재료</h2>

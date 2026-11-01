@@ -47,6 +47,8 @@ export interface RecipeDetail extends RecipeSummary {
   content: RecipeContent;
   sourceUrl: string | null;
   versionCount: number;
+  /** 원본 이후 직접 남긴 '무엇을 바꿨나요?' 메모. 최신 것부터 */
+  changeNotes: string[];
 }
 
 export interface RecipeVersion {
