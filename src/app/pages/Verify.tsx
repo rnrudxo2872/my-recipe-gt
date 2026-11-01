@@ -2,6 +2,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { CircleCheck, MailCheck, MailQuestionMark, RotateCcw, TriangleAlert } from "lucide-react";
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router";
+import { AuthHead, AuthLayout, FormError } from "../components/AuthLayout";
 import { ApiError, api } from "../lib/api";
 import { useConfig, useDocumentTitle, useMe } from "../lib/hooks";
 import { useToast } from "../lib/toast";
@@ -42,15 +43,6 @@ export function SpamHint() {
         )}
       </div>
     </div>
-  );
-}
-
-function Brand() {
-  return (
-    <span className="brand">
-      <img src="/icons/logo-96.png" alt="" />
-      <span>레시퐁</span>
-    </span>
   );
 }
 
@@ -125,25 +117,22 @@ export function VerifyPending() {
   }
 
   return (
-    <div className="auth">
-      <div style={{ display: "flex", justifyContent: "center", marginBottom: 28 }}>
-        <Brand />
-      </div>
-      <div className="verify-icon" aria-hidden="true">
+    <AuthLayout>
+      <div className="status-icon" aria-hidden="true">
         <MailCheck />
       </div>
-      <h1>메일함을 확인해 주세요</h1>
-      <p className="auth-lead">
-        <strong>{me?.user.email}</strong>(으)로 인증 메일을 보냈어요.
-        <br />
-        메일 속 링크를 열면 바로 시작할 수 있어요.
-      </p>
+      <AuthHead
+        title="메일함을 확인해 주세요"
+        lead={
+          <>
+            <strong>{me?.user.email}</strong>(으)로 인증 메일을 보냈어요.
+            <br />
+            메일 속 링크를 열면 바로 시작할 수 있어요.
+          </>
+        }
+      />
 
-      {error && (
-        <p className="form-error" role="alert">
-          {error}
-        </p>
-      )}
+      {error && <FormError message={error} />}
 
       {devLink && (
         <div className="notice is-warn" style={{ marginBottom: 16 }}>
@@ -154,18 +143,19 @@ export function VerifyPending() {
         </div>
       )}
 
-      <button type="button" className="btn btn-primary btn-block" disabled={sending || cooldown > 0} onClick={resend}>
+      <button type="button" className="btn btn-primary btn-block btn-lg" disabled={sending || cooldown > 0} onClick={resend}>
         <RotateCcw aria-hidden="true" />
         {cooldown > 0 ? `인증 메일 다시 보내기 (${cooldown}초)` : "인증 메일 다시 보내기"}
       </button>
-      <p className="help" style={{ textAlign: "center", marginTop: 12 }}>
+      <p className="auth-note" style={{ marginTop: 12 }}>
         인증하면 이 화면은 저절로 넘어가요.
       </p>
       <SpamHint />
 
-      <div className="card" style={{ marginTop: 24 }}>
+      <div className="auth-foot">
+        <hr />
         {editing ? (
-          <form onSubmit={changeEmail}>
+          <form onSubmit={changeEmail} className="auth-inline-form">
             <label className="field">
               <span className="label">새 이메일 주소</span>
               <input className="input" type="email" inputMode="email" autoComplete="email" required value={email} onChange={(e) => setEmail(e.target.value)} />
@@ -180,21 +170,18 @@ export function VerifyPending() {
             </div>
           </form>
         ) : (
-          <p style={{ textAlign: "center", color: "var(--ink-2)", fontSize: 15 }}>
+          <p>
             이메일 주소가 틀렸나요?{" "}
-            <button type="button" className="link-btn" onClick={() => setEditing(true)}>
+            <button type="button" className="link-brand link-as-btn" onClick={() => setEditing(true)}>
               주소 바꾸기
             </button>
           </p>
         )}
-      </div>
-
-      <p className="auth-switch">
-        <button type="button" className="link-btn" onClick={logout}>
+        <button type="button" className="auth-quiet-link link-as-btn" onClick={logout}>
           로그아웃
         </button>
-      </p>
-    </div>
+      </div>
+    </AuthLayout>
   );
 }
 
@@ -231,10 +218,7 @@ export function VerifyToken() {
   }, [params, qc]);
 
   return (
-    <div className="auth">
-      <div style={{ display: "flex", justifyContent: "center", marginBottom: 28 }}>
-        <Brand />
-      </div>
+    <AuthLayout>
       {state === "working" && (
         <div className="ai-wait" aria-busy="true">
           <img src="/icons/logo-96.png" alt="" />
@@ -243,17 +227,16 @@ export function VerifyToken() {
       )}
       {state === "done" && (
         <>
-          <div className="verify-icon is-done" aria-hidden="true">
+          <div className="status-icon is-done" aria-hidden="true">
             <CircleCheck />
           </div>
-          <h1>인증을 마쳤어요</h1>
-          <p className="auth-lead">{me ? "이제 레시피를 정리해 볼까요?" : "로그인하면 바로 시작할 수 있어요."}</p>
+          <AuthHead title="인증을 마쳤어요" lead={me ? "이제 레시피를 정리해 볼까요?" : "로그인하면 바로 시작할 수 있어요."} />
           {me ? (
-            <button type="button" className="btn btn-primary btn-block" onClick={() => navigate("/", { replace: true })}>
+            <button type="button" className="btn btn-primary btn-block btn-lg" onClick={() => navigate("/", { replace: true })}>
               시작하기
             </button>
           ) : (
-            <Link to="/login" className="btn btn-primary btn-block">
+            <Link to="/login" className="btn btn-primary btn-block btn-lg">
               로그인
             </Link>
           )}
@@ -261,16 +244,15 @@ export function VerifyToken() {
       )}
       {state === "error" && (
         <>
-          <div className="verify-icon is-error" aria-hidden="true">
+          <div className="status-icon is-error" aria-hidden="true">
             <TriangleAlert />
           </div>
-          <h1>인증하지 못했어요</h1>
-          <p className="auth-lead">{message}</p>
-          <Link to={me ? "/" : "/login"} className="btn btn-primary btn-block">
+          <AuthHead title="인증하지 못했어요" lead={message} />
+          <Link to={me ? "/" : "/login"} className="btn btn-primary btn-block btn-lg">
             {me ? "인증 메일 다시 받기" : "로그인"}
           </Link>
         </>
       )}
-    </div>
+    </AuthLayout>
   );
 }

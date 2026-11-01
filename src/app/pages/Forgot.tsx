@@ -1,91 +1,87 @@
 import { useQueryClient } from "@tanstack/react-query";
-import { MailCheck, TriangleAlert } from "lucide-react";
+import { LoaderCircle, MailCheck, TriangleAlert } from "lucide-react";
 import { useState, type FormEvent } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router";
+import { AuthHead, AuthLayout, FormError } from "../components/AuthLayout";
 import { ApiError, api } from "../lib/api";
 import { useDocumentTitle } from "../lib/hooks";
 import { useToast } from "../lib/toast";
 import { SpamHint } from "./Verify";
-
-function Brand() {
-  return (
-    <Link to="/" className="brand">
-      <img src="/icons/logo-96.png" alt="" />
-      <span>레시퐁</span>
-    </Link>
-  );
-}
 
 /** 비밀번호 찾기: 이메일로 재설정 링크를 받는다. */
 export function Forgot() {
   useDocumentTitle("비밀번호 찾기");
   const [email, setEmail] = useState("");
   const [busy, setBusy] = useState(false);
-  const [error, setError] = useState("");
+  const [error, setError] = useState<{ message: string; code?: string } | null>(null);
   const [sent, setSent] = useState<{ devLink?: string } | null>(null);
 
   async function submit(e: FormEvent) {
     e.preventDefault();
     setBusy(true);
-    setError("");
+    setError(null);
     try {
       setSent(await api.forgotPassword(email));
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : "메일을 보내지 못했어요. 잠시 뒤에 다시 시도해 주세요.");
+      setError(err instanceof ApiError ? { message: err.message, code: err.code } : { message: "메일을 보내지 못했어요. 잠시 뒤에 다시 시도해 주세요." });
     } finally {
       setBusy(false);
     }
   }
 
-  return (
-    <div className="auth">
-      <Brand />
-      {sent ? (
-        <>
-          <div className="verify-icon" aria-hidden="true">
-            <MailCheck />
+  if (sent) {
+    return (
+      <AuthLayout>
+        <div className="status-icon" aria-hidden="true">
+          <MailCheck />
+        </div>
+        <AuthHead
+          title="메일함을 확인해 주세요"
+          lead={
+            <>
+              가입된 이메일이면 <strong>{email}</strong>(으)로 비밀번호를 새로 정하는 링크를 보냈어요. 링크는 1시간 동안 쓸 수 있어요.
+            </>
+          }
+        />
+        {sent.devLink && (
+          <div className="notice is-warn" style={{ marginBottom: 16 }}>
+            <TriangleAlert aria-hidden="true" />
+            <span>
+              시험 모드라 메일을 보내지 않았어요. <a href={sent.devLink}>재설정 링크 열기</a>
+            </span>
           </div>
-          <h1>메일함을 확인해 주세요</h1>
-          <p className="auth-lead">
-            가입된 이메일이면 <strong>{email}</strong>(으)로 비밀번호를 새로 정하는 링크를 보냈어요. 링크는 1시간 동안 쓸 수 있어요.
-          </p>
-          {sent.devLink && (
-            <div className="notice is-warn" style={{ marginBottom: 16 }}>
-              <TriangleAlert aria-hidden="true" />
-              <span>
-                시험 모드라 메일을 보내지 않았어요. <a href={sent.devLink}>재설정 링크 열기</a>
-              </span>
-            </div>
-          )}
-          <Link to="/login" className="btn btn-block">
-            로그인으로 돌아가기
-          </Link>
-          <SpamHint />
-        </>
-      ) : (
-        <>
-          <h1>비밀번호 찾기</h1>
-          <p className="auth-lead">가입한 이메일로 비밀번호를 새로 정하는 링크를 보내 드려요.</p>
-          <form onSubmit={submit} noValidate>
-            {error && (
-              <p className="form-error" role="alert">
-                {error}
-              </p>
-            )}
-            <label className="field">
-              <span className="label">이메일</span>
-              <input className="input" type="email" inputMode="email" autoComplete="email" required value={email} onChange={(e) => setEmail(e.target.value)} />
-            </label>
-            <button type="submit" className="btn btn-primary btn-block" disabled={busy || !email}>
-              {busy ? "보내는 중…" : "재설정 링크 받기"}
-            </button>
-          </form>
-          <p className="auth-switch">
-            <Link to="/login">로그인으로 돌아가기</Link>
-          </p>
-        </>
-      )}
-    </div>
+        )}
+        <Link to="/login" className="btn btn-block btn-lg">
+          로그인으로 돌아가기
+        </Link>
+        <SpamHint />
+      </AuthLayout>
+    );
+  }
+
+  return (
+    <AuthLayout>
+      <AuthHead title="비밀번호 찾기" lead="가입한 이메일로 비밀번호를 새로 정하는 링크를 보내 드려요." />
+      {error && <FormError message={error.message} code={error.code} />}
+      <form onSubmit={submit} noValidate>
+        <fieldset className="auth-fields" disabled={busy}>
+          <label className="field">
+            <span className="label">이메일</span>
+            <input className="input" type="email" inputMode="email" autoComplete="email" required value={email} onChange={(e) => setEmail(e.target.value)} />
+          </label>
+          <button type="submit" className="btn btn-primary btn-block btn-lg auth-submit" disabled={!email}>
+            {busy && <LoaderCircle className="spinner" aria-hidden="true" />}
+            {busy ? "보내는 중…" : "재설정 링크 받기"}
+          </button>
+        </fieldset>
+      </form>
+      <div className="auth-foot">
+        <hr />
+        <Link to="/login" className="auth-quiet-link">
+          로그인으로 돌아가기
+        </Link>
+      </div>
+    </AuthLayout>
   );
 }
 
@@ -120,35 +116,35 @@ export function Reset() {
   }
 
   return (
-    <div className="auth">
-      <Brand />
-      <h1>새 비밀번호 정하기</h1>
-      <p className="auth-lead">바꾸면 다른 기기에서 로그인한 것은 모두 풀려요.</p>
+    <AuthLayout>
+      <AuthHead title="새 비밀번호 정하기" lead="바꾸면 다른 기기에서 로그인한 것은 모두 풀려요." />
+      {error && (
+        <FormError message={error}>
+          {/만료|이미 쓴/.test(error) && (
+            <>
+              {" "}
+              <Link to="/forgot">다시 받기</Link>
+            </>
+          )}
+        </FormError>
+      )}
       <form onSubmit={submit} noValidate>
-        {error && (
-          <p className="form-error" role="alert">
-            {error}
-            {/만료|이미 쓴/.test(error) && (
-              <>
-                {" "}
-                <Link to="/forgot">다시 받기</Link>
-              </>
-            )}
-          </p>
-        )}
-        <label className="field">
-          <span className="label">새 비밀번호</span>
-          <input className="input" type="password" autoComplete="new-password" value={password} onChange={(e) => setPassword(e.target.value)} />
-          <span className="help">8자 이상</span>
-        </label>
-        <label className="field">
-          <span className="label">한 번 더</span>
-          <input className="input" type="password" autoComplete="new-password" value={confirm} onChange={(e) => setConfirm(e.target.value)} />
-        </label>
-        <button type="submit" className="btn btn-primary btn-block" disabled={busy || !password || !confirm || !token}>
-          {busy ? "바꾸는 중…" : "비밀번호 바꾸기"}
-        </button>
+        <fieldset className="auth-fields" disabled={busy}>
+          <label className="field">
+            <span className="label">새 비밀번호</span>
+            <input className="input" type="password" autoComplete="new-password" value={password} onChange={(e) => setPassword(e.target.value)} />
+            <span className="help">8자 이상</span>
+          </label>
+          <label className="field">
+            <span className="label">한 번 더</span>
+            <input className="input" type="password" autoComplete="new-password" value={confirm} onChange={(e) => setConfirm(e.target.value)} />
+          </label>
+          <button type="submit" className="btn btn-primary btn-block btn-lg auth-submit" disabled={!password || !confirm || !token}>
+            {busy && <LoaderCircle className="spinner" aria-hidden="true" />}
+            {busy ? "바꾸는 중…" : "비밀번호 바꾸기"}
+          </button>
+        </fieldset>
       </form>
-    </div>
+    </AuthLayout>
   );
 }

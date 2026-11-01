@@ -102,6 +102,13 @@ if (r.data.me?.user.role !== "admin") {
 }
 const firstIsAdmin = r.data.me?.user.role === "admin";
 check("관리자 계정 준비", firstIsAdmin, r.data);
+// 이 점검은 AI를 수십 번 부른다. 실제 AI 키로 돌면 무료 한도를 쓰고, 영상 점검도 예시 응답을 전제로 한다.
+r = await admin("GET", "/api/admin/overview");
+if (r.data.providers && !r.data.providers.mock) {
+  console.error("\n서버가 실제 AI로 돌고 있어요(AI_MOCK이 꺼짐). 무료 한도를 쓰지 않도록 여기서 멈춥니다.");
+  console.error(".dev.vars에 AI_MOCK=1을 넣고 개발 서버를 다시 켠 뒤 실행해 주세요.");
+  process.exit(1);
+}
 // 기능 점검 동안은 일반 계정 한도를 넉넉히 둔다. 한도 점검 구간에서 기본값으로 되돌린다.
 r = await admin("PUT", "/api/admin/policy", { policy: { member: { ai: 30, import: 20 } } });
 check("점검용 한도 설정", r.data.policy?.member.ai === 30, r.data);
