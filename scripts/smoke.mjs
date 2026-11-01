@@ -250,14 +250,80 @@ r = await member("POST", "/api/images", new TextEncoder().encode("<svg/>"), { he
 check("SVG 같은 형식 거절", r.status === 400, r.data);
 
 console.log("냉장고");
-r = await member("PUT", "/api/fridge/pantry", { items: ["김치", "찬밥", "계란"], staples: true });
-check("냉장고 저장", r.data.items?.length === 3, r.data);
+r = await member("GET", "/api/fridge");
+check("처음엔 냉장고 하나", r.status === 200 && r.data.fridges.length === 1, r.data);
+const mainFridge = r.data.fridges[0].id;
+r = await member("POST", "/api/fridge/items", {
+  fridgeId: mainFridge,
+  items: [
+    { name: "달걀", qty: 10, unit: "개" },
+    { name: "김치", qty: null, unit: "" },
+    { name: "밥", qty: 3, unit: "공기" },
+    { name: "스팸", qty: 340, unit: "g" },
+  ],
+});
+check("재료 넣기", r.data.items?.length === 4, r.data);
+r = await member("POST", "/api/fridge/items", { fridgeId: mainFridge, items: [{ name: "계란", qty: 6, unit: "개" }] });
+const egg = r.data.items?.find((i) => i.name === "달걀");
+check("같은 재료는 양을 더함", egg?.qty === 16 && r.data.items.length === 4, r.data.items);
+r = await member("POST", "/api/fridge/fridges", { name: "냉동실", kind: "freezer" });
+check("냉장고 더하기", r.data.state?.fridges.length === 2, r.data);
+const freezer = r.data.id;
+r = await member("PATCH", `/api/fridge/items/${egg.id}`, { fridgeId: freezer, qty: 12 });
+check("재료 옮기고 양 고치기", r.data.items?.find((i) => i.id === egg.id)?.fridgeId === freezer, r.data);
+r = await friend("PATCH", `/api/fridge/items/${egg.id}`, { qty: 1 });
+check("남의 재료는 못 고침", r.status === 404, r.data);
+const spam = (await member("GET", "/api/fridge")).data.items.find((i) => i.name === "스팸");
+r = await member("POST", "/api/fridge/cook", {
+  uses: [
+    { itemId: egg.id, use: 2 },
+    { itemId: spam.id, use: 340 },
+  ],
+});
+check(
+  "요리하면 쓴 만큼 빼고 다 쓴 건 지움",
+  r.data.state?.items.find((i) => i.id === egg.id)?.qty === 10 && !r.data.state.items.some((i) => i.id === spam.id) && r.data.before.length === 2,
+  r.data,
+);
+r = await member("POST", "/api/fridge/items/restore", { items: r.data.before });
+check("되돌리기", r.data.items?.find((i) => i.id === egg.id)?.qty === 12 && r.data.items.some((i) => i.id === spam.id), r.data);
+r = await member("DELETE", `/api/fridge/fridges/${mainFridge}`);
+check("냉장고 지우기(안의 재료도)", r.data.fridges?.length === 1 && !r.data.items.some((i) => i.fridgeId === mainFridge), r.data);
+r = await member("DELETE", `/api/fridge/fridges/${freezer}`);
+check("마지막 냉장고는 못 지움", r.status === 400, r.data);
+r = await member("POST", "/api/fridge/items", { fridgeId: freezer, items: [{ name: "김치" }, { name: "찬밥" }, { name: "계란", qty: 6, unit: "개" }] });
 r = await member("POST", "/api/fridge/match", { items: ["김치", "찬밥"], staples: true });
 check("내 레시피에서 찾기", r.status === 200 && r.data.matches.length > 0, r.data);
 r = await member("POST", "/api/fridge/ai", { items: ["김치", "달걀"], note: "" });
 check("AI 추천 3개", r.status === 200 && r.data.recipes.length === 3, r.data);
+check("추천에는 '추정' 표시가 없음", r.data.recipes.every((x) => x.ingredients.every((i) => !i.note.includes("추정"))), r.data.recipes);
 r = await member("POST", "/api/recipes", { content: r.data.recipes[1], sourceType: "ai" });
 check("추천 레시피 저장", r.status === 200 && r.data.id, r.data);
+
+console.log("식단");
+const today = new Date().toISOString().slice(0, 10);
+r = await member("POST", "/api/plan", { day: today, slot: "dinner", recipeId, servings: 4 });
+check("식단에 레시피 넣기", r.status === 200 && r.data.entry?.recipeId === recipeId && r.data.entry.servings === 4, r.data);
+const planId = r.data.entry?.id;
+r = await member("POST", "/api/plan", { day: today, slot: "lunch", title: "외식" });
+check("직접 적은 메뉴", r.data.entry?.title === "외식" && r.data.entry.recipeId === null, r.data);
+r = await member("POST", "/api/plan", { day: "2026-13-40", slot: "lunch", title: "x" });
+check("이상한 날짜는 거절", r.status === 400, r.data);
+r = await friend("POST", "/api/plan", { day: today, slot: "lunch", recipeId });
+check("남의 레시피는 못 넣음", r.status === 404, r.data);
+r = await member("GET", `/api/plan?from=${today}&to=${today}`);
+check("식단 보기(끼니 순서)", r.data.entries?.length === 2 && r.data.entries[0].slot === "lunch", r.data);
+r = await member("GET", `/api/plan/needs?from=${today}&to=${today}`);
+check("장보기: 냉장고에 없는 재료", r.status === 200 && r.data.meals === 1 && r.data.needs.some((n) => n.name.includes("스팸")), r.data);
+r = await member("POST", "/api/fridge/cook", { uses: [], planId });
+r = await member("GET", `/api/plan?from=${today}&to=${today}`);
+check("만들었어요 표시", r.data.entries?.find((e) => e.id === planId)?.done === true, r.data);
+r = await member("GET", `/api/plan/needs?from=${today}&to=${today}`);
+check("만든 메뉴는 장보기에서 빠짐", r.data.meals === 0, r.data);
+r = await member("PATCH", `/api/plan/${planId}`, { done: false, slot: "breakfast" });
+check("식단 고치기", r.data.entry?.done === false && r.data.entry.slot === "breakfast", r.data);
+r = await member("DELETE", `/api/plan/${planId}`);
+check("식단에서 빼기", r.status === 200, r.data);
 
 console.log("한도와 자동 제한");
 // 1) 분당 한도: 하루 한도를 넉넉히 둔 채 빠르게 보내면 too_fast

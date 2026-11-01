@@ -2,6 +2,8 @@ import { ArrowLeft, ArrowRight, Check, ListChecks, Pause, Play, Timer, X } from 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate, useParams, useSearchParams } from "react-router";
 import { detectStepMinutes, formatAmount } from "../../shared/recipe";
+import { CookedSheet } from "../components/CookedSheet";
+import { TermText } from "../components/TermText";
 import { Sheet } from "../components/Sheet";
 import { useDocumentTitle, useRecipe } from "../lib/hooks";
 import { useToast } from "../lib/toast";
@@ -71,6 +73,7 @@ export function Cook() {
   const toast = useToast();
   const [idx, setIdx] = useState(0);
   const [showIngs, setShowIngs] = useState(false);
+  const [finishing, setFinishing] = useState(false);
   const [timer, setTimer] = useState<TimerState | null>(null);
   const [now, setNow] = useState(Date.now());
   const rang = useRef(false);
@@ -183,7 +186,9 @@ export function Cook() {
             <p className="cook-step-no">
               {idx + 1} / {steps.length}
             </p>
-            <p className="cook-text">{step}</p>
+            <p className="cook-text">
+              <TermText text={step} />
+            </p>
             {minutes && (
               <div className="cook-timer">
                 <button type="button" className="btn btn-soft" onClick={() => startTimer(minutes)}>
@@ -209,12 +214,14 @@ export function Cook() {
             <ArrowRight aria-hidden="true" />
           </button>
         ) : (
-          <button type="button" className="btn btn-primary" onClick={exit}>
+          <button type="button" className="btn btn-primary" onClick={() => setFinishing(true)}>
             <Check aria-hidden="true" />
             완성
           </button>
         )}
       </div>
+
+      {finishing && <CookedSheet open onClose={() => setFinishing(false)} recipe={recipe} factor={factor} onDone={exit} />}
 
       <Sheet open={showIngs} onClose={() => setShowIngs(false)} title="재료">
         <ul className="ing-list">

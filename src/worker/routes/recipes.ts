@@ -85,6 +85,8 @@ recipes.delete("/:id", async (c) => {
   await c.env.DB.batch([
     c.env.DB.prepare("DELETE FROM recipe_versions WHERE recipe_id = ?1").bind(row.id),
     c.env.DB.prepare("DELETE FROM recipes WHERE id = ?1").bind(row.id),
+    // 식단에 올려 둔 것은 제목만 남긴다.
+    c.env.DB.prepare("UPDATE meal_plans SET recipe_id = NULL WHERE recipe_id = ?1 AND user_id = ?2").bind(row.id, user.id),
   ]);
   await deleteImageIfUnused(c.env, row.image, user.id);
   return c.json({ ok: true });

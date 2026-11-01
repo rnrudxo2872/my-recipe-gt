@@ -13,6 +13,7 @@ import { Landing } from "./pages/Landing";
 import { Login, Signup } from "./pages/Auth";
 import { Me } from "./pages/Me";
 import { NotFound } from "./pages/NotFound";
+import { Plan } from "./pages/Plan";
 import { RecipePage } from "./pages/Recipe";
 import { Share } from "./pages/Share";
 import { VerifyPending, VerifyToken } from "./pages/Verify";
@@ -110,6 +111,7 @@ export function App() {
         <Route path="r/:id" element={<RecipePage />} />
         <Route path="r/:id/edit" element={<Edit />} />
         <Route path="fridge" element={<Fridge />} />
+        <Route path="plan" element={<Plan />} />
         <Route path="me" element={<Me />} />
         <Route path="admin" element={me.data.user.role === "admin" ? <Admin /> : <Navigate to="/" replace />} />
         <Route path="login" element={<AfterLogin />} />

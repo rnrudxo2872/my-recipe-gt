@@ -1,6 +1,7 @@
 // 서버 API 호출
 
 import type { AdminOverview, AppConfig, ImportEvent, MeResponse, Policy, Role, SubstituteResult, UserStatus } from "../../shared/api";
+import type { FridgeItem, FridgeKind, FridgeState, ItemDraft, MealEntry, MealSlot, NeedLine } from "../../shared/fridge";
 import type { RecipeContent, RecipeDetail, RecipeSummary, RecipeVersion, SourceType } from "../../shared/recipe";
 
 export class ApiError extends Error {
@@ -74,14 +75,32 @@ export const api = {
     request<{ result: SubstituteResult }>("POST", `/api/recipes/${id}/substitutes`, { missing }).then((r) => r.result),
   tweak: (id: string, instruction: string) => request<{ content: RecipeContent; changes: string[] }>("POST", `/api/recipes/${id}/tweak`, { instruction }),
 
-  pantry: () => request<{ items: string[]; staples: boolean }>("GET", "/api/fridge/pantry"),
-  savePantry: (items: string[], staples: boolean) => request<{ items: string[]; staples: boolean }>("PUT", "/api/fridge/pantry", { items, staples }),
+  fridge: () => request<FridgeState>("GET", "/api/fridge"),
+  fridgeSettings: (staples: boolean) => request<FridgeState>("PUT", "/api/fridge/settings", { staples }),
+  addFridge: (name: string, kind: FridgeKind) => request<{ id: string; state: FridgeState }>("POST", "/api/fridge/fridges", { name, kind }),
+  updateFridge: (id: string, body: { name?: string; kind?: FridgeKind }) => request<FridgeState>("PATCH", `/api/fridge/fridges/${id}`, body),
+  deleteFridge: (id: string) => request<FridgeState>("DELETE", `/api/fridge/fridges/${id}`),
+  addItems: (fridgeId: string, items: ItemDraft[]) => request<FridgeState>("POST", "/api/fridge/items", { fridgeId, items }),
+  updateItem: (id: string, body: { name?: string; qty?: number | null; unit?: string; fridgeId?: string }) =>
+    request<FridgeState>("PATCH", `/api/fridge/items/${id}`, body),
+  deleteItem: (id: string) => request<{ removed: FridgeItem; state: FridgeState }>("DELETE", `/api/fridge/items/${id}`),
+  restoreItems: (items: FridgeItem[]) => request<FridgeState>("POST", "/api/fridge/items/restore", { items }),
+  cooked: (uses: { itemId: string; use?: number | null; all?: boolean }[], planId?: string) =>
+    request<{ before: FridgeItem[]; state: FridgeState }>("POST", "/api/fridge/cook", { uses, planId }),
   matchPantry: (items: string[], staples: boolean) =>
     request<{ matches: { recipe: RecipeSummary; have: string[]; missing: string[]; ratio: number }[] }>("POST", "/api/fridge/match", { items, staples }).then(
       (r) => r.matches,
     ),
   recommend: (items: string[], note: string, staples: boolean) =>
     request<{ recipes: RecipeContent[] }>("POST", "/api/fridge/ai", { items, note, staples }).then((r) => r.recipes),
+
+  plan: (from: string, to: string) => request<{ entries: MealEntry[] }>("GET", `/api/plan?from=${from}&to=${to}`).then((r) => r.entries),
+  addPlan: (body: { day: string; slot: MealSlot; recipeId?: string; title?: string; servings?: number | null }) =>
+    request<{ entry: MealEntry }>("POST", "/api/plan", body).then((r) => r.entry),
+  updatePlan: (id: string, body: { day?: string; slot?: MealSlot; servings?: number | null; done?: boolean; title?: string }) =>
+    request<{ entry: MealEntry }>("PATCH", `/api/plan/${id}`, body).then((r) => r.entry),
+  deletePlan: (id: string) => request<{ ok: true }>("DELETE", `/api/plan/${id}`),
+  planNeeds: (from: string, to: string) => request<{ needs: NeedLine[]; meals: number }>("GET", `/api/plan/needs?from=${from}&to=${to}`),
 
   uploadImage: async (blob: Blob): Promise<string> => {
     let res: Response;

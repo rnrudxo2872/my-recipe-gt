@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   ArrowLeft,
   BookOpen,
+  CalendarPlus,
   Camera,
   Check,
   ChefHat,
@@ -15,6 +16,7 @@ import {
   Minus,
   Pencil,
   Plus,
+  Refrigerator,
   Repeat2,
   Share2,
   Sparkles,
@@ -26,8 +28,12 @@ import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router";
 import type { SubstituteResult } from "../../shared/api";
 import { formatAmount, formatQty, recipeToText, type Ingredient, type RecipeContent, type RecipeDetail, type RecipeVersion } from "../../shared/recipe";
+import { AddToPlanSheet } from "../components/AddToPlanSheet";
+import { CookedSheet } from "../components/CookedSheet";
 import { InstagramIcon, YouTubeIcon } from "../components/Icons";
 import { RecipeImage } from "../components/RecipeImage";
+import { TermText } from "../components/TermText";
+import { youtubeSearchUrl } from "../../shared/glossary";
 import { Sheet } from "../components/Sheet";
 import { ApiError, api } from "../lib/api";
 import { useAiLeft, useDocumentTitle, useRecipe, useRecipeSummary } from "../lib/hooks";
@@ -64,13 +70,23 @@ function useScale(base: number | null) {
 }
 
 function SourceLink({ recipe }: { recipe: RecipeDetail }) {
-  if (!recipe.sourceUrl) return null;
   const label = recipe.sourceType === "youtube" ? "유튜브에서 영상 보기" : recipe.sourceType === "instagram" ? "인스타그램에서 보기" : "원본 페이지 보기";
   return (
-    <a className="source-link" href={recipe.sourceUrl} target="_blank" rel="noreferrer noopener">
-      {recipe.sourceType === "youtube" ? <YouTubeIcon /> : recipe.sourceType === "instagram" ? <InstagramIcon /> : <ExternalLink aria-hidden="true" />}
-      {label}
-    </a>
+    <div className="source-links">
+      {recipe.sourceUrl && (
+        <a className="source-link" href={recipe.sourceUrl} target="_blank" rel="noreferrer noopener">
+          {recipe.sourceType === "youtube" ? <YouTubeIcon /> : recipe.sourceType === "instagram" ? <InstagramIcon /> : <ExternalLink aria-hidden="true" />}
+          {label}
+        </a>
+      )}
+      {/* 영상이 없는 레시피는 만드는 영상을 찾아볼 수 있게(검색 결과라 없는 영상을 가리키지 않는다) */}
+      {recipe.sourceType !== "youtube" && (
+        <a className="source-link" href={youtubeSearchUrl(`${recipe.title} 만들기`)} target="_blank" rel="noreferrer noopener">
+          <YouTubeIcon />
+          만드는 영상 찾아보기
+        </a>
+      )}
+    </div>
   );
 }
 
@@ -119,7 +135,7 @@ export function RecipePage() {
   const qc = useQueryClient();
   const toast = useToast();
   const [missing, setMissing] = useState<Set<number>>(new Set());
-  const [sheet, setSheet] = useState<null | "subs" | "tweak" | "versions" | "menu" | "delete">(null);
+  const [sheet, setSheet] = useState<null | "subs" | "tweak" | "versions" | "menu" | "delete" | "plan" | "cooked">(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const scale = useScale(recipe?.content.servings ?? null);
   const aiLeft = useAiLeft();
@@ -295,7 +311,9 @@ export function RecipePage() {
                 <ol className="steps">
                   {content.steps.map((s, i) => (
                     <li key={i}>
-                      <span>{s}</span>
+                      <span>
+                        <TermText text={s} />
+                      </span>
                     </li>
                   ))}
                 </ol>
@@ -311,7 +329,9 @@ export function RecipePage() {
                 </div>
                 <ul className="tips">
                   {content.tips.map((t, i) => (
-                    <li key={i}>{t}</li>
+                    <li key={i}>
+                      <TermText text={t} />
+                    </li>
                   ))}
                 </ul>
               </section>
@@ -340,6 +360,14 @@ export function RecipePage() {
                 <Pencil aria-hidden="true" />
                 직접 수정
               </Link>
+              <button type="button" className="btn" onClick={() => setSheet("plan")}>
+                <CalendarPlus aria-hidden="true" />
+                식단에 넣기
+              </button>
+              <button type="button" className="btn" onClick={() => setSheet("cooked")}>
+                <Refrigerator aria-hidden="true" />
+                다 만들었어요
+              </button>
             </div>
             <button type="button" className="version-link" onClick={() => setSheet("versions")}>
               <History aria-hidden="true" />
@@ -453,6 +481,13 @@ export function RecipePage() {
           >
             <p>'{recipe.title}'와 버전 기록이 모두 지워져요. 되돌릴 수 없어요.</p>
           </Sheet>
+          <AddToPlanSheet
+            open={sheet === "plan"}
+            onClose={() => setSheet(null)}
+            recipe={{ id: recipe.id, title: recipe.title, servings: recipe.content.servings }}
+            servings={recipe.content.servings ? Math.round(recipe.content.servings * scale.factor) : null}
+          />
+          {sheet === "cooked" && <CookedSheet open onClose={() => setSheet(null)} recipe={recipe} factor={scale.factor} />}
         </>
       )}
     </article>

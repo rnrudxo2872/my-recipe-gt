@@ -5,6 +5,7 @@ import { BrowserRouter } from "react-router";
 import { App } from "./App";
 import { ApiError } from "./lib/api";
 import { ToastProvider } from "./lib/toast";
+import { TermSheetHost } from "./components/TermText";
 import "./styles.css";
 
 function onAuthLost(error: unknown) {
@@ -31,6 +32,7 @@ createRoot(document.getElementById("root")!).render(
       <BrowserRouter>
         <ToastProvider>
           <App />
+          <TermSheetHost />
         </ToastProvider>
       </BrowserRouter>
     </QueryClientProvider>

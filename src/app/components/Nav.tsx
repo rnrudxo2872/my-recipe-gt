@@ -1,13 +1,12 @@
-import { BookOpen, Heart, Plus, Refrigerator, Shield, User } from "lucide-react";
+import { BookOpen, CalendarDays, Heart, Plus, Refrigerator, Shield, User } from "lucide-react";
 import { Link, NavLink, useLocation } from "react-router";
 import { useUser } from "../lib/hooks";
 
 export function TabBar() {
-  const { pathname, search } = useLocation();
-  const favOn = pathname === "/" && new URLSearchParams(search).get("filter") === "fav";
+  const { pathname } = useLocation();
   return (
     <nav className="tabbar" aria-label="주요 메뉴">
-      <Link to="/" className={`tab ${pathname === "/" && !favOn ? "active" : ""}`} aria-current={pathname === "/" && !favOn ? "page" : undefined}>
+      <Link to="/" className={`tab ${pathname === "/" ? "active" : ""}`} aria-current={pathname === "/" ? "page" : undefined}>
         <BookOpen aria-hidden="true" />
         레시피
       </Link>
@@ -18,10 +17,10 @@ export function TabBar() {
       <Link to="/add" className="tab-add" aria-label="레시피 추가">
         <Plus aria-hidden="true" />
       </Link>
-      <Link to="/?filter=fav" className={`tab ${favOn ? "active" : ""}`} aria-current={favOn ? "page" : undefined}>
-        <Heart aria-hidden="true" />
-        즐겨찾기
-      </Link>
+      <NavLink to="/plan" className="tab">
+        <CalendarDays aria-hidden="true" />
+        식단
+      </NavLink>
       <NavLink to="/me" className="tab">
         <User aria-hidden="true" />내 정보
       </NavLink>
@@ -54,6 +53,10 @@ export function Sidebar() {
       <NavLink to="/fridge" className="side-link">
         <Refrigerator aria-hidden="true" />
         냉장고
+      </NavLink>
+      <NavLink to="/plan" className="side-link">
+        <CalendarDays aria-hidden="true" />
+        식단
       </NavLink>
       <NavLink to="/me" className="side-link">
         <User aria-hidden="true" />내 정보

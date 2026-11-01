@@ -9,6 +9,7 @@ import { isUnlimited, useQuota } from "./quota";
 import { account } from "./routes/account";
 import { admin } from "./routes/admin";
 import { fridge } from "./routes/fridge";
+import { plan } from "./routes/plan";
 import { importer } from "./routes/import";
 import { recipes } from "./routes/recipes";
 
@@ -43,6 +44,7 @@ app.route("/api", account);
 app.route("/api/recipes", recipes);
 app.route("/api/import", importer);
 app.route("/api/fridge", fridge);
+app.route("/api/plan", plan);
 app.route("/api/admin", admin);
 
 app.post("/api/images", requireVerified, async (c) => {
@@ -99,6 +101,8 @@ export default {
       env.DB.prepare("DELETE FROM email_tokens WHERE expires_at < ?1").bind(now),
       env.DB.prepare("DELETE FROM usage_daily WHERE day < ?1").bind(old),
       env.DB.prepare("DELETE FROM events WHERE created_at < ?1").bind(now - 90 * 24 * 60 * 60 * 1000),
+      // 지난 식단은 13개월쯤 지나면 지운다.
+      env.DB.prepare("DELETE FROM meal_plans WHERE day < ?1").bind(new Date(now - 400 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10)),
     ]);
     await cleanOrphanImages(env);
   },

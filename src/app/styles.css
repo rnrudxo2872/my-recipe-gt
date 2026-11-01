@@ -3471,3 +3471,889 @@ li.is-now .stage-icon {
   }
 }
 
+
+/* ───────── 시트 공통 ───────── */
+
+.sheet-lead {
+  margin-bottom: 16px;
+  font-size: 15px;
+  line-height: 1.6;
+  color: var(--ink-2);
+}
+
+.sheet-label {
+  display: block;
+  margin: 20px 0 10px;
+}
+
+.inline-add {
+  display: flex;
+  gap: 8px;
+}
+
+.inline-add .input {
+  flex: 1;
+  min-width: 0;
+}
+
+.inline-add .btn {
+  flex: none;
+}
+
+/* 양 조절: − 2개 + */
+.amount-stepper {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 4px;
+  border-radius: 14px;
+  background: var(--surface-2);
+}
+
+.amount-stepper button {
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  border: none;
+  border-radius: 10px;
+  background: var(--surface);
+  color: var(--ink);
+  box-shadow: var(--shadow-sm);
+}
+
+.amount-stepper button:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.amount-stepper svg {
+  width: 16px;
+  height: 16px;
+}
+
+.amount-stepper output {
+  min-width: 64px;
+  padding: 0 4px;
+  text-align: center;
+  font-size: 15px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.amount-stepper.is-compact {
+  padding: 2px;
+  border-radius: 12px;
+}
+
+.amount-stepper.is-compact button {
+  width: 30px;
+  height: 30px;
+  border-radius: 9px;
+}
+
+.amount-stepper.is-compact output {
+  min-width: 52px;
+  font-size: 14px;
+}
+
+/* ───────── 냉장고 재고 ───────── */
+
+.quick-add {
+  padding: 16px;
+  margin-bottom: 20px;
+  border-radius: var(--r-card);
+  border: 1px solid var(--line);
+  background: var(--surface);
+  box-shadow: var(--shadow-md);
+}
+
+.quick-add-row {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.quick-add-row .input {
+  flex: 1;
+  min-width: 0;
+}
+
+.quick-add-row .btn {
+  flex: none;
+  box-shadow: none;
+}
+
+.into-chips {
+  align-items: center;
+  margin-top: 12px;
+}
+
+.into-chips .help {
+  margin-right: 2px;
+}
+
+.fridge-empty {
+  padding: 28px 20px;
+  border-radius: var(--r-card);
+  background: var(--bg-soft);
+  text-align: center;
+}
+
+.fridge-empty h2 {
+  font-size: 19px;
+  margin-bottom: 6px;
+}
+
+.fridge-empty p {
+  color: var(--ink-2);
+  font-size: 15px;
+  margin-bottom: 16px;
+}
+
+.fridge-empty .chips {
+  justify-content: center;
+}
+
+.ready-card {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  padding: 14px 16px;
+  margin-bottom: 20px;
+  border: none;
+  border-radius: var(--r-ctl);
+  background: var(--leaf-soft);
+  color: var(--ink);
+  font-size: 15px;
+  text-align: left;
+}
+
+.ready-card svg {
+  flex: none;
+  width: 22px;
+  height: 22px;
+  color: var(--leaf);
+}
+
+.ready-card span:first-of-type {
+  flex: 1;
+}
+
+.ready-go {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--leaf);
+}
+
+.stock-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.stock-head .chips.is-scroll {
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+  padding: 2px 0;
+}
+
+.stock-group {
+  margin-top: 12px;
+}
+
+.stock-group-title {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  padding: 10px 0 4px;
+  font-size: 15px;
+  color: var(--ink-2);
+}
+
+.stock-group-title span {
+  font-size: 13px;
+  color: var(--ink-3);
+}
+
+.stock-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.stock-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 60px;
+  border-bottom: 1px solid var(--line);
+}
+
+.stock-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  padding: 10px 0;
+  border: none;
+  background: none;
+  text-align: left;
+}
+
+.stock-name {
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.stock-when {
+  font-size: 12px;
+  color: var(--ink-3);
+}
+
+.stock-amount {
+  flex: none;
+  min-height: 34px;
+  padding: 0 12px;
+  border: none;
+  border-radius: 10px;
+  background: var(--surface-2);
+  color: var(--ink);
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.stock-amount.is-unknown {
+  background: transparent;
+  color: var(--ink-3);
+  font-weight: 500;
+  text-decoration: underline;
+  text-decoration-style: dotted;
+  text-underline-offset: 4px;
+}
+
+.qty-edit {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.qty-edit .input {
+  flex: 1;
+  min-width: 0;
+  text-align: center;
+}
+
+.qty-edit .qty-unit {
+  flex: 0 0 84px;
+}
+
+.unit-chips {
+  margin-top: 4px;
+}
+
+.unit-chips .chip {
+  min-height: 32px;
+  padding: 0 10px;
+  font-size: 13px;
+}
+
+.fridge-edit-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.fridge-edit-list li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.fridge-edit-list .input {
+  flex: 1;
+  min-width: 0;
+}
+
+.find-box {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 16px;
+  margin-bottom: 8px;
+  border-radius: var(--r-card);
+  background: var(--bg-soft);
+}
+
+/* 요리하고 냉장고에서 빼기 */
+.use-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.use-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.use-check {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  cursor: pointer;
+}
+
+.use-check input,
+.need-row input {
+  appearance: none;
+  flex: none;
+  width: 24px;
+  height: 24px;
+  margin: 1px 0 0;
+  border-radius: 8px;
+  border: 2px solid var(--line-strong);
+  background: var(--surface) no-repeat center / 14px;
+  cursor: pointer;
+  transition:
+    background-color 0.15s,
+    border-color 0.15s;
+}
+
+.use-check input:checked,
+.need-row input:checked {
+  border-color: var(--brand);
+  background-color: var(--brand);
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='white' stroke-width='3.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M20 6 9 17l-5-5'/%3E%3C/svg%3E");
+}
+
+.use-info,
+.need-info {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.use-name {
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.use-where {
+  margin-left: 6px;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--ink-3);
+}
+
+.use-sub {
+  font-size: 13px;
+  color: var(--ink-3);
+}
+
+.use-row.is-on .use-sub {
+  color: var(--brand-ink);
+}
+
+/* ───────── 식단 ───────── */
+
+.tabs.is-compact {
+  flex: none;
+  margin: 0;
+}
+
+.tabs.is-compact button {
+  min-height: 34px;
+  padding: 0 14px;
+  font-size: 13px;
+}
+
+.plan-nav {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-bottom: 16px;
+}
+
+.plan-nav h2 {
+  font-size: 18px;
+  min-width: 0;
+  text-align: center;
+}
+
+.plan-nav .btn {
+  margin-left: auto;
+}
+
+.week-list {
+  display: grid;
+  gap: 12px;
+}
+
+@media (min-width: 720px) {
+  .week-list {
+    grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  }
+}
+
+.day-card {
+  padding: 14px 16px 10px;
+  border-radius: var(--r-card);
+  border: 1px solid var(--line);
+  background: var(--surface);
+}
+
+.day-card.is-today {
+  border-color: color-mix(in srgb, var(--brand) 45%, var(--line));
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--brand) 45%, transparent);
+}
+
+.day-card.is-past {
+  background: var(--bg-soft);
+}
+
+.day-head {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  margin-bottom: 6px;
+}
+
+.day-week {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--ink-3);
+}
+
+.day-num {
+  font-size: 20px;
+  font-weight: 700;
+}
+
+.day-card.is-today .day-num,
+.day-card.is-today .day-week {
+  color: var(--brand-ink);
+}
+
+.badge.is-today {
+  background: var(--brand-soft);
+  color: var(--brand-ink);
+}
+
+.meal-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.meal-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  border-bottom: 1px solid var(--line);
+}
+
+.meal-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 52px;
+  padding: 6px 0;
+  border: none;
+  background: none;
+  text-align: left;
+}
+
+.meal-slot {
+  flex: none;
+  width: 34px;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--ink-3);
+}
+
+.meal-thumb {
+  position: relative;
+  flex: none;
+  width: 40px;
+  height: 40px;
+  border-radius: 10px;
+  overflow: hidden;
+  background: var(--surface-2);
+}
+
+.meal-thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.meal-thumb .thumb-placeholder {
+  font-size: 18px;
+}
+
+.meal-title {
+  flex: 1;
+  min-width: 0;
+  font-size: 15px;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.meal-servings {
+  flex: none;
+  font-size: 12px;
+  color: var(--ink-3);
+}
+
+.meal-row.is-done .meal-title {
+  color: var(--ink-3);
+  text-decoration: line-through;
+}
+
+.meal-check {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  border: 2px solid var(--line-strong);
+  background: var(--surface);
+  color: transparent;
+}
+
+.meal-check svg {
+  width: 16px;
+  height: 16px;
+  stroke-width: 3;
+}
+
+.meal-check:hover {
+  border-color: var(--leaf);
+  color: var(--leaf);
+}
+
+.meal-check[aria-pressed="true"] {
+  border-color: var(--leaf);
+  background: var(--leaf);
+  color: #ffffff;
+}
+
+.day-add {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-height: 40px;
+  margin-top: 4px;
+  padding: 0 4px;
+  border: none;
+  background: none;
+  color: var(--ink-3);
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.day-add:hover {
+  color: var(--brand-ink);
+}
+
+.day-add svg {
+  width: 16px;
+  height: 16px;
+}
+
+.month-head,
+.month-grid {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 4px;
+}
+
+.month-head span {
+  padding: 4px 0;
+  text-align: center;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--ink-3);
+}
+
+.month-cell {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 2px;
+  min-height: 76px;
+  padding: 6px 4px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--surface);
+  text-align: left;
+  overflow: hidden;
+}
+
+.month-cell.is-out {
+  background: var(--bg-soft);
+  opacity: 0.6;
+}
+
+.month-cell.is-today {
+  border-color: var(--brand);
+}
+
+.month-num {
+  font-size: 13px;
+  font-weight: 700;
+  padding: 0 2px;
+}
+
+.month-cell.is-today .month-num {
+  color: var(--brand-ink);
+}
+
+.month-meal {
+  padding: 1px 4px;
+  border-radius: 5px;
+  background: var(--brand-soft);
+  font-size: 11px;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.month-meal.is-done {
+  background: var(--surface-2);
+  color: var(--ink-3);
+}
+
+.month-more {
+  font-size: 11px;
+  color: var(--ink-3);
+  padding: 0 4px;
+}
+
+@media (min-width: 720px) {
+  .month-cell {
+    min-height: 104px;
+    padding: 8px;
+  }
+  .month-meal {
+    font-size: 12px;
+  }
+}
+
+/* 날짜 고르기 띠 */
+.day-strip {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  scrollbar-width: none;
+  margin: 0 -4px;
+  padding: 2px 4px;
+}
+
+.day-strip::-webkit-scrollbar {
+  display: none;
+}
+
+.day-chip {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  width: 56px;
+  padding: 8px 0;
+  border: none;
+  border-radius: 14px;
+  background: var(--surface-2);
+  color: var(--ink-2);
+  font-size: 12px;
+}
+
+.day-chip b {
+  font-size: 18px;
+  color: var(--ink);
+}
+
+.day-chip[aria-checked="true"] {
+  background: var(--ink);
+  color: var(--bg);
+}
+
+.day-chip[aria-checked="true"] b {
+  color: var(--bg);
+}
+
+/* 식단에 넣을 레시피 고르기 */
+.pick-list {
+  list-style: none;
+  margin: 12px 0 0;
+  padding: 0;
+  max-height: 46dvh;
+  overflow-y: auto;
+}
+
+.pick-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  padding: 8px 4px;
+  border: none;
+  border-radius: 12px;
+  background: none;
+  text-align: left;
+}
+
+.pick-row:hover {
+  background: var(--bg-soft);
+}
+
+.pick-thumb {
+  position: relative;
+  flex: none;
+  width: 48px;
+  height: 48px;
+  border-radius: 12px;
+  overflow: hidden;
+  background: var(--surface-2);
+}
+
+.pick-thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.pick-thumb .thumb-placeholder {
+  font-size: 20px;
+}
+
+.pick-info {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.pick-title {
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pick-hint {
+  font-size: 13px;
+  color: var(--ink-3);
+}
+
+.pick-hint.is-ready {
+  color: var(--leaf);
+  font-weight: 600;
+}
+
+.pick-plus {
+  flex: none;
+  width: 20px;
+  height: 20px;
+  color: var(--ink-3);
+}
+
+/* 장보기 */
+.needs h2 {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.needs h2 svg {
+  width: 22px;
+  height: 22px;
+  color: var(--brand);
+}
+
+.need-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.need-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--line);
+  cursor: pointer;
+}
+
+.need-name {
+  font-weight: 600;
+}
+
+.need-amount {
+  margin-left: 8px;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--brand-ink);
+}
+
+.need-for {
+  font-size: 13px;
+  color: var(--ink-3);
+}
+
+/* ───────── 요리 용어 풀이 ───────── */
+
+.term {
+  display: inline;
+  padding: 0;
+  border: none;
+  background: none;
+  font: inherit;
+  color: inherit;
+  text-align: inherit;
+  text-decoration: underline;
+  text-decoration-style: dotted;
+  text-decoration-color: var(--brand);
+  text-decoration-thickness: 2px;
+  text-underline-offset: 5px;
+  cursor: help;
+}
+
+.term:hover {
+  color: var(--brand-ink);
+}
+
+.term-explain {
+  margin-bottom: 12px;
+  font-size: 17px;
+  line-height: 1.7;
+}
+
+.source-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0 18px;
+}

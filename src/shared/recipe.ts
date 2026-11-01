@@ -137,7 +137,7 @@ export function parseQty(input: unknown): { qty: number | null; range: string | 
   return { qty: null, range: null };
 }
 
-const COUNT_UNITS = new Set(["개", "알", "장", "쪽", "대", "줄기", "마리", "모", "봉", "봉지", "팩", "캔", "토막", "덩이", "통", "송이", "포기", "단"]);
+export const COUNT_UNITS = new Set(["개", "알", "장", "쪽", "대", "줄기", "마리", "모", "봉", "봉지", "팩", "캔", "토막", "덩이", "통", "송이", "포기", "단"]);
 
 const FRACTIONS: [number, string][] = [
   [0.125, "⅛"],
