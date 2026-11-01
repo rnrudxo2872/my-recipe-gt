@@ -125,10 +125,10 @@ export function Add() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  async function paste() {
+  async function paste(fill: (text: string) => void = setInput) {
     try {
       const text = await navigator.clipboard.readText();
-      if (text) setInput(text.trim());
+      if (text) fill(text.trim());
       else toast.show("클립보드가 비어 있어요.");
     } catch {
       toast.show("붙여넣기 권한이 없어요. 입력 칸을 길게 눌러 붙여넣어 주세요.");
@@ -215,16 +215,40 @@ export function Add() {
         <div className="card">
           <h2>내용을 붙여넣어 주세요</h2>
           <p className="card-sub">{state.message}</p>
-          <label className="field">
-            <span className="label">설명란, 캡션, 고정 댓글 속 레시피</span>
-            <textarea
-              className="textarea"
-              rows={8}
-              value={caption}
-              onChange={(e) => setCaption(e.target.value)}
-              placeholder={"예)\n재료: 김치 1컵, 밥 2공기, 스팸 100g\n1. 팬에 스팸을 볶아요\n2. 김치를 넣고..."}
-            />
-          </label>
+          {source?.type === "instagram" && (
+            <ol className="copy-steps">
+              <li>
+                <span>인스타그램에서 게시물을 열어요</span>
+                <a className="btn btn-soft btn-sm" href={source.url} target="_blank" rel="noopener noreferrer">
+                  <InstagramIcon />
+                  인스타그램에서 열기
+                </a>
+              </li>
+              <li>캡션을 길게 눌러 복사해요</li>
+              <li>여기로 돌아와 붙여넣기를 눌러요</li>
+            </ol>
+          )}
+          <div className="field">
+            <label className="label" htmlFor="caption">
+              설명란, 캡션, 고정 댓글 속 레시피
+            </label>
+            <div className="paste-box">
+              <textarea
+                id="caption"
+                className="textarea"
+                rows={8}
+                value={caption}
+                onChange={(e) => setCaption(e.target.value)}
+                placeholder={"예)\n재료: 김치 1컵, 밥 2공기, 스팸 100g\n1. 팬에 스팸을 볶아요\n2. 김치를 넣고..."}
+              />
+              {canPaste && (
+                <button type="button" className="btn btn-soft btn-sm paste-btn" onClick={() => paste(setCaption)}>
+                  <ClipboardPaste aria-hidden="true" />
+                  붙여넣기
+                </button>
+              )}
+            </div>
+          </div>
           {source?.type !== "youtube" && (
             <div className="field">
               <span className="label">사진 (선택)</span>
@@ -272,7 +296,7 @@ export function Add() {
                 autoFocus={!input}
               />
               {canPaste && (
-                <button type="button" className="btn btn-soft btn-sm paste-btn" onClick={paste}>
+                <button type="button" className="btn btn-soft btn-sm paste-btn" onClick={() => paste()}>
                   <ClipboardPaste aria-hidden="true" />
                   붙여넣기
                 </button>
@@ -305,7 +329,7 @@ export function Add() {
             </li>
             <li>
               <InstagramIcon />
-              인스타그램은 캡션에서 레시피를 찾아요. 못 가져오면 캡션을 붙여넣으면 돼요.
+              인스타그램은 캡션을 자동으로 못 읽을 때가 많아요. 그럴 땐 캡션을 복사해 붙여넣으면 바로 정리해요.
             </li>
             <li>
               <Share2 aria-hidden="true" />

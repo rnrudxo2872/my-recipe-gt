@@ -1968,6 +1968,49 @@ button {
   gap: 10px;
 }
 
+/* 인스타 캡션 복사 순서 */
+.copy-steps {
+  margin: 4px 0 16px;
+  padding: 0;
+  list-style: none;
+  counter-reset: copy-step;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.copy-steps li {
+  counter-increment: copy-step;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 10px;
+  font-size: 15px;
+  color: var(--ink);
+}
+
+.copy-steps li::before {
+  content: counter(copy-step);
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: var(--brand-soft);
+  color: var(--brand-ink);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.copy-steps li > span {
+  flex: 1 1 calc(100% - 34px);
+}
+
+.copy-steps li > .btn {
+  margin-left: 34px;
+}
+
 .how-list {
   margin: 28px 0 0;
   padding: 0;

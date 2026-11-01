@@ -134,7 +134,8 @@ async function extractInstagram(
     remoteImage = meta?.image ?? null;
   }
   if (caption.length < 20) {
-    throw new NeedCaption("인스타그램 캡션을 가져오지 못했어요. 인스타그램 앱에서 캡션을 복사해 붙여넣어 주세요.");
+    // 인스타그램은 서버에서 오는 요청을 페이스북 '지원하지 않는 브라우저' 화면으로 돌려보낸다(폰서버 도우미가 없을 때 대부분 여기로 온다).
+    throw new NeedCaption("인스타그램이 바깥에서는 캡션을 보여 주지 않아서 자동으로 못 읽었어요. 캡션을 복사해 붙여넣어 주세요.");
   }
   await stage(send, "caption", "캡션에서 레시피를 찾고 있어요");
   const { data } = await callAi(job, env, extractTextTask({ sourceLabel: "인스타그램 게시물 캡션", text: caption }));
