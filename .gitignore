@@ -10,3 +10,6 @@ test-results/
 screenshots/
 worker-configuration.d.ts
 __pycache__/
+.env
+.env.*
+.wrangler-home/

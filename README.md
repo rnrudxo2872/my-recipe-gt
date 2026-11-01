@@ -74,14 +74,16 @@ npm run smoke       # 개발 서버를 켠 상태에서 가입부터 한도·차
 처음 한 번:
 
 ```sh
-npx wrangler login
-npm run setup -- --admin 내이메일@example.com --gemini 내-Gemini-키 --resend 내-Resend-키 --mail-from "레시퐁 <no-reply@내도메인.com>"
+npm run setup
 ```
+
+질문에 차례로 답하면 됩니다. 키를 미리 넘길 수도 있습니다: `npm run setup -- --admin 내이메일@example.com --gemini 내-Gemini-키 --resend 내-Resend-키 --mail-from "레시퐁 <no-reply@내도메인.com>"` (명령줄에 넣은 키는 셸 기록에 남습니다).
 
 `setup`이 하는 일은 다음과 같습니다. 다시 실행해도 이미 있는 것은 건드리지 않습니다.
 
+0. 로그인한 Cloudflare 계정을 보여 주고 이 계정에 배포할지 묻습니다. 아니라고 하면 **이 폴더에서만 쓰는 로그인**을 따로 만듭니다(`.env`의 `XDG_CONFIG_HOME`이 `.wrangler-home/`을 가리킴). 컴퓨터에 로그인된 다른 계정은 그대로 남고, 이 폴더에서 실행하는 `wrangler`만 새 계정을 씁니다. 고른 계정 ID는 `wrangler.jsonc`의 `account_id`에 적어, 다른 계정으로 로그인한 채 배포해도 엉뚱한 곳에 올라가지 않게 합니다.
 1. D1 데이터베이스와 사진용 KV를 만들고 `wrangler.jsonc`에 ID를 적습니다. 이 ID는 비밀이 아니니 커밋해 두세요(자동 배포에 필요).
-2. 빌드하고, 표를 만들고, 배포합니다.
+2. 빌드하고, 표를 만들고, 배포합니다. 새 계정이면 이때 `workers.dev` 하위 도메인을 정하라고 묻습니다.
 3. `AUTH_PEPPER`를 자동으로 만들고, 넘겨받은 키들을 비밀값으로 넣습니다. `--mail-from`은 `wrangler.jsonc`의 `MAIL_FROM`에 적습니다.
 
 그다음부터는 `npm run deploy`만 하면 됩니다.
