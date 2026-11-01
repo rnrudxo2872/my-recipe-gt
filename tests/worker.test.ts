@@ -82,3 +82,29 @@ describe("normalizeSubstitutes", () => {
     expect(r.tip).toBe("맛보며 조절");
   });
 });
+
+describe("fetchCreatorComment", () => {
+  it("picks the creator's recipe comment and ignores others", async () => {
+    const { fetchCreatorComment } = await import("../src/worker/extract/youtube");
+    const recipe = "재료\n돼지고기 300g\n김치 1/4포기\n두부 반 모\n대파 1대\n고춧가루 1큰술\n만드는 법\n1. 볶아요 2. 끓여요";
+    const original = globalThis.fetch;
+    globalThis.fetch = (async () =>
+      new Response(
+        JSON.stringify({
+          items: [
+            { snippet: { topLevelComment: { snippet: { textDisplay: recipe.replace("돼지고기", "소고기"), authorChannelId: { value: "UC_viewer" } } } } },
+            { snippet: { topLevelComment: { snippet: { textDisplay: "맛있어 보여요!", authorChannelId: { value: "UC_owner" } } } } },
+            { snippet: { topLevelComment: { snippet: { textDisplay: recipe, authorChannelId: { value: "UC_owner" } } } } },
+          ],
+        }),
+      )) as typeof fetch;
+    try {
+      const env = { YOUTUBE_API_KEY: "k" } as Parameters<typeof fetchCreatorComment>[0];
+      expect(await fetchCreatorComment(env, "vid", "UC_owner")).toBe(recipe);
+      expect(await fetchCreatorComment(env, "vid", "UC_someone_else")).toBeNull();
+      expect(await fetchCreatorComment({} as typeof env, "vid", "UC_owner")).toBeNull();
+    } finally {
+      globalThis.fetch = original;
+    }
+  });
+});

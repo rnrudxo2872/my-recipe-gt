@@ -78,7 +78,7 @@ export interface AppConfig {
   mailSender: string;
 }
 
-export type ImportStage = "start" | "cache" | "meta" | "description" | "video" | "caption" | "page" | "text" | "image" | "save";
+export type ImportStage = "start" | "cache" | "meta" | "description" | "comment" | "video" | "caption" | "page" | "text" | "image" | "save";
 
 export type ImportEvent =
   | { type: "stage"; stage: ImportStage; label: string }

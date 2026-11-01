@@ -12,7 +12,7 @@ import { ApiError, readJson, type AppEnv, type HonoEnv, type SessionUser } from 
 import { fetchInstagram } from "../extract/instagram";
 import { looksLikeRecipe } from "../extract/text";
 import { fetchWebPage } from "../extract/web";
-import { fetchYouTubeMeta } from "../extract/youtube";
+import { fetchCreatorComment, fetchYouTubeMeta } from "../extract/youtube";
 import { copyRemoteImage, keyFromImageUrl } from "../images";
 import { addUsage, assertRecipeRoom, canUseVideo, isUnlimited, useQuota } from "../quota";
 import { createRecipe } from "../recipes-db";
@@ -41,7 +41,7 @@ interface Job {
 }
 
 // 레시피 정리 규칙(프롬프트)을 바꾸면 이 시각을 올린다. 그 전에 정리해 둔 공용 캐시는 쓰지 않고 새로 정리한다.
-const CACHE_SINCE = Date.UTC(2026, 10, 1, 8, 0); // 2026-11-01 17:00 KST: 분량 추정·초보자용 단계
+const CACHE_SINCE = Date.UTC(2026, 10, 1, 8, 35); // 2026-11-01 17:35 KST: 분량 추정·초보자용 단계·한국어 단위
 
 function callAi(job: Job, env: AppEnv, task: Parameters<typeof runAi>[1]) {
   job.aiCalls++;
@@ -82,6 +82,17 @@ async function extractYouTube(
     const { data } = await callAi(job, env, extractTextTask({ sourceLabel: input.caption ? "사용자가 붙여넣은 영상 설명" : "유튜브 영상 설명란", title: meta.title, text }));
     const content = fromAi(data);
     if (content) return { content, image: meta.thumbnail, method: "description" };
+  }
+
+  // 설명란에 없으면 작성자 댓글(보통 고정 댓글)을 본다. 영상 분석보다 훨씬 빠르고 영상 한도를 쓰지 않는다.
+  if (!input.caption) {
+    const comment = await fetchCreatorComment(env, source.id, meta.channelId);
+    if (comment) {
+      await stage(send, "comment", "고정 댓글에서 레시피를 찾고 있어요");
+      const { data } = await callAi(job, env, extractTextTask({ sourceLabel: "유튜브 작성자의 고정 댓글", title: meta.title, text: comment }));
+      const content = fromAi(data);
+      if (content) return { content, image: meta.thumbnail, method: "comment" };
+    }
   }
 
   if (!videoReady(env)) throw new NeedCaption("영상을 직접 분석하려면 Gemini 키가 필요해요. 설명란이나 고정 댓글의 레시피를 붙여넣어 주세요.");
