@@ -4,7 +4,8 @@
 // 사용법:
 //   npm run setup
 //   npm run setup -- --admin me@example.com --gemini AIza... --groq gsk_... --youtube AIza...
-//                    --resend re_... --mail-from "레시퐁 <no-reply@내도메인.com>"
+//                    --mail-from "레시퐁 <내계정@gmail.com>" --gmail-app-password abcdefghijklmnop
+//                    (또는 Resend: --mail-from "레시퐁 <no-reply@내도메인.com>" --resend re_...)
 //   npm run setup -- --own-login   (컴퓨터의 wrangler 로그인과 다른 계정을 이 폴더에서만 쓰기)
 
 import { execSync } from "node:child_process";
@@ -177,21 +178,6 @@ if (config.includes(KV_PLACEHOLDER)) {
   console.log("wrangler.jsonc에 이미 사진 저장소 ID가 있어요.");
 }
 
-// 2-2. 인증 메일 보내는 주소 (공개 설정이라 wrangler.jsonc에 적는다)
-step("인증 메일 보내는 주소");
-config = readFileSync("wrangler.jsonc", "utf8");
-let mailFrom = args["mail-from"];
-if (!mailFrom && config.includes('"MAIL_FROM": ""')) {
-  mailFrom = await ask('인증 메일 보내는 주소 (예: 레시퐁 <no-reply@내도메인.com>, Resend에서 인증한 도메인. 비우면 건너뜀): ');
-}
-if (mailFrom) {
-  config = config.replace(/"MAIL_FROM": "[^"]*"/, `"MAIL_FROM": ${JSON.stringify(mailFrom)}`);
-  writeFileSync("wrangler.jsonc", config);
-  console.log(`wrangler.jsonc의 MAIL_FROM을 정했어요: ${mailFrom}`);
-} else {
-  console.log("MAIL_FROM이 비어 있으면 이메일 인증 없이 동작해요.");
-}
-
 // 3. 빌드와 표 만들기, 배포
 step("빌드");
 sh("npm run build");
@@ -232,13 +218,39 @@ const optional = [
   ["GEMINI_API_KEY", "gemini", "Gemini API 키 (https://aistudio.google.com/apikey, 비우면 건너뜀): "],
   ["GROQ_API_KEY", "groq", "Groq API 키 (선택, 비우면 건너뜀): "],
   ["YOUTUBE_API_KEY", "youtube", "YouTube Data API 키 (선택, 비우면 건너뜀): "],
-  ["RESEND_API_KEY", "resend", "Resend API 키 (이메일 인증·비밀번호 찾기, 비우면 건너뜀): "],
 ];
-for (const [name, flag, question] of optional) {
+async function optionalSecret(name, flag, question) {
   let value = args[flag];
   if (!value && !existing.includes(name)) value = await ask(question);
   if (value) putSecret(name, value);
   else if (existing.includes(name)) console.log(`${name}는 이미 있어요.`);
+  return value;
+}
+for (const [name, flag, question] of optional) await optionalSecret(name, flag, question);
+
+// 인증 메일: 보내는 주소가 Gmail이면 앱 비밀번호를, 아니면 Resend 키를 묻는다.
+// 주소도 비밀값으로 둔다(이메일이 저장소에 공개되지 않게).
+step("인증 메일 (이메일 인증·비밀번호 찾기)");
+const mailFrom = await optionalSecret(
+  "MAIL_FROM",
+  "mail-from",
+  "보내는 주소 (예: 레시퐁 <내계정@gmail.com>. 비우면 이메일 인증 없이 동작): ",
+);
+if (mailFrom || existing.includes("MAIL_FROM")) {
+  // 이미 넣어 둔 주소는 읽을 수 없으니(null) 둘 다 물어볼 수 있다.
+  const isGmail = mailFrom ? /@(gmail|googlemail)\.com>?\s*$/i.test(mailFrom) : null;
+  let hasGmail = existing.includes("GMAIL_APP_PASSWORD");
+  if (isGmail !== false) {
+    const skip = hasGmail || existing.includes("RESEND_API_KEY");
+    const pw = args["gmail-app-password"] ?? (skip ? "" : await ask("Gmail 앱 비밀번호 16자리 (https://myaccount.google.com/apppasswords, 비우면 건너뜀): "));
+    if (pw) {
+      putSecret("GMAIL_APP_PASSWORD", pw.replace(/\s+/g, ""));
+      hasGmail = true;
+    } else if (hasGmail) console.log("GMAIL_APP_PASSWORD는 이미 있어요.");
+  }
+  if (isGmail !== true && !hasGmail) {
+    await optionalSecret("RESEND_API_KEY", "resend", "Resend API 키 (Resend에서 인증한 도메인 주소로 보낼 때, 비우면 건너뜀): ");
+  }
 }
 
 console.log(`

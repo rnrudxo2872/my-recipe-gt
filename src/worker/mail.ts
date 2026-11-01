@@ -1,14 +1,17 @@
-// 메일 발송(Resend)과 메일 링크용 일회용 토큰.
-// - resend: RESEND_API_KEY와 MAIL_FROM이 있으면 실제로 보낸다(무료 하루 100통, 월 3,000통).
+// 메일 발송과 메일 링크용 일회용 토큰.
+// - gmail:  GMAIL_APP_PASSWORD와 MAIL_FROM(Gmail 주소)이 있으면 Gmail로 보낸다. 도메인이 없어도 된다(하루 약 500통).
+// - resend: RESEND_API_KEY와 MAIL_FROM(Resend에서 인증한 도메인 주소)이 있으면 Resend로 보낸다(무료 하루 100통).
 // - mock:   로컬 시험용. 보내지 않고 링크를 응답에 담아 화면에 보여 준다.
-// - off:    둘 다 없으면 이메일 인증을 하지 않는다(키를 넣기 전에도 앱은 그대로 돌아가게).
+// - off:    아무것도 없으면 이메일 인증을 하지 않는다(키를 넣기 전에도 앱은 그대로 돌아가게).
 
 import { ApiError, randomId, sha256Hex, type AppEnv, type Ctx } from "./env";
 import { addUsage, getUsage, limitAttempts } from "./quota";
+import { parseAddress, sendSmtp } from "./smtp";
 
-export type MailMode = "resend" | "mock" | "off";
+export type MailMode = "gmail" | "resend" | "mock" | "off";
 
 export function mailMode(env: AppEnv): MailMode {
+  if (env.GMAIL_APP_PASSWORD && env.MAIL_FROM) return "gmail";
   if (env.RESEND_API_KEY && env.MAIL_FROM) return "resend";
   if (env.MAIL_MOCK === "1" || env.MAIL_MOCK === "true") return "mock";
   return "off";
@@ -18,7 +21,7 @@ export function verificationRequired(env: AppEnv): boolean {
   return mailMode(env) !== "off";
 }
 
-// Resend 무료는 하루 100통. 넘기 전에 멈춘다.
+// Resend 무료는 하루 100통(Gmail은 약 500통). 작은 쪽에 맞춰 넘기 전에 멈춘다.
 const DAILY_MAIL_BUDGET = 90;
 
 interface Mail {
@@ -38,6 +41,20 @@ async function sendMail(env: AppEnv, mail: Mail): Promise<void> {
   await addUsage(env.DB, 0, "mail");
   if (mode === "mock") {
     console.log(`[메일 시험 모드] ${mail.to} — ${mail.subject}`);
+    return;
+  }
+  if (mode === "gmail") {
+    const from = parseAddress(env.MAIL_FROM!);
+    from.name ||= env.APP_NAME;
+    const { connect } = await import("cloudflare:sockets");
+    const socket = connect({ hostname: "smtp.gmail.com", port: 465 }, { secureTransport: "on", allowHalfOpen: false });
+    try {
+      // 구글은 앱 비밀번호를 4자리씩 띄어서 보여 준다. 띄어쓰기는 빼고 쓴다.
+      await sendSmtp(socket, { user: from.address, password: env.GMAIL_APP_PASSWORD!.replace(/\s+/g, "") }, { from, ...mail });
+    } catch (e) {
+      console.error("메일 발송 실패(Gmail)", e instanceof Error ? e.message : String(e));
+      throw new ApiError(502, "mail_failed", "메일을 보내지 못했어요. 잠시 뒤에 다시 시도해 주세요.");
+    }
     return;
   }
   const res = await fetch("https://api.resend.com/emails", {

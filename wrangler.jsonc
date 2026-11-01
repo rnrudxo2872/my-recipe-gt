@@ -1,6 +1,7 @@
 {
   "$schema": "./node_modules/wrangler/config-schema.json",
   "name": "recipong",
+  "account_id": "15ecfcb182e1696899659bdc55ed7c49",
   "main": "./src/worker/index.ts",
   "compatibility_date": "2026-10-01",
   "assets": {
@@ -12,12 +13,12 @@
       "binding": "DB",
       "database_name": "recipong-db",
       // `npm run setup`이 실제 ID로 바꿔 줍니다.
-      "database_id": "00000000-0000-0000-0000-000000000000",
+      "database_id": "0b9c42b8-c8a2-4c64-8773-8ed6c1977814",
       "migrations_dir": "migrations"
     }
   ],
   // 사진 저장소. 카드 등록 없이 1GB 무료. `npm run setup`이 실제 ID로 바꿔 줍니다.
-  "kv_namespaces": [{ "binding": "IMAGES_KV", "id": "00000000000000000000000000000000" }],
+  "kv_namespaces": [{ "binding": "IMAGES_KV", "id": "d80c1a5c15d74614ac60f6560bf4bcb5" }],
   // Workers AI: 키 없이 하루 1만 뉴런까지 무료인 예비 AI 엔진
   "ai": { "binding": "AI" },
   // R2(10GB 무료, 활성화할 때 카드 등록 필요)를 쓰려면 아래 주석을 풀고 버킷을 만드세요. 있으면 KV 대신 R2에 저장합니다.
@@ -31,8 +32,7 @@
     "OPENROUTER_MODEL": "meta-llama/llama-3.3-70b-instruct:free",
     "TURNSTILE_SITE_KEY": "",
     "INSTA_HELPER_URL": "",
-    // 인증 메일 보내는 주소. Resend에서 인증한 도메인이어야 합니다. 예: "레시퐁 <no-reply@example.com>"
-    "MAIL_FROM": "",
+    // 인증 메일 보내는 주소(MAIL_FROM)는 이메일이 공개되지 않게 비밀값으로 넣습니다. `npm run setup`이 물어봅니다.
     // 메일 속 링크 주소(개인 도메인을 붙였을 때). 비우면 접속한 주소를 씁니다.
     "APP_URL": ""
   },

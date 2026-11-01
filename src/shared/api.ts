@@ -121,5 +121,5 @@ export interface AdminOverview {
   events: { id: number; userId: number | null; userName: string | null; kind: string; detail: string; createdAt: number }[];
   /** 아직 가입하지 않은 이메일에 미리 정해 둔 권한 */
   grants: { email: string; role: Role; createdAt: number }[];
-  providers: { mail: "resend" | "mock" | "off"; gemini: boolean; groq: boolean; workersAi: boolean; openrouter: boolean; youtubeApi: boolean; instaHelper: boolean; turnstile: boolean; mock: boolean };
+  providers: { mail: "gmail" | "resend" | "mock" | "off"; gemini: boolean; groq: boolean; workersAi: boolean; openrouter: boolean; youtubeApi: boolean; instaHelper: boolean; turnstile: boolean; mock: boolean };
 }

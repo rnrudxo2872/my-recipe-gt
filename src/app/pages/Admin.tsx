@@ -421,7 +421,10 @@ function Usage({ data }: { data: AdminOverview }) {
         <ul className="status-list">
           {(
             [
-              [p.mail === "mock" ? "이메일 인증 (시험 모드: 메일 안 보냄)" : "이메일 인증 메일 (Resend)", p.mail !== "off"],
+              [
+                p.mail === "mock" ? "이메일 인증 (시험 모드: 메일 안 보냄)" : p.mail === "gmail" ? "이메일 인증 메일 (Gmail)" : "이메일 인증 메일 (Resend)",
+                p.mail !== "off",
+              ],
               ["Gemini (주 AI, 영상 분석)", p.gemini],
               ["Groq (예비 AI)", p.groq],
               ["Workers AI (예비 AI)", p.workersAi],

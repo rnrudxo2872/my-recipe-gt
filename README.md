@@ -18,7 +18,7 @@
 
 ## 가입과 사용량
 
-- 누구나 이메일로 가입할 수 있습니다. 가입하면 **인증 메일**이 가고, 링크를 눌러야 쓸 수 있습니다(Resend 키를 넣었을 때). 비밀번호를 잊으면 메일로 다시 정할 수 있습니다.
+- 누구나 이메일로 가입할 수 있습니다. 가입하면 **인증 메일**이 가고, 링크를 눌러야 쓸 수 있습니다(Gmail 앱 비밀번호나 Resend 키를 넣었을 때). 비밀번호를 잊으면 메일로 다시 정할 수 있습니다.
 - **지인**과 **관리자**는 사용량 제한이 없습니다. 지인이 가입한 이메일을 알려 주면 **관리 → 사용자 → 이메일로 권한 바꾸기**에 넣고 [지인으로]를 누르면 됩니다. 아직 가입 전인 이메일이면 예약해 두었다가, 그 이메일로 가입해 인증을 마치는 순간 지인이 됩니다.
 - **일반 계정**은 맛보기 수준으로 하루 횟수가 정해져 있습니다(나중에 멤버십으로 늘릴 예정). 기본값은 **링크 가져오기 3회, AI 기능 3회**(대체 재료, 입맛대로 바꾸기, 냉장고 추천)이고, 그 밖에 영상 분석은 20분 이하 영상만, 사진 20장, 레시피 저장·수정 60회, AI 요청은 1분에 8회까지입니다. 레시피는 300개, 사진은 모두 200장까지 보관합니다.
 - 과다 사용으로 **제한**된 계정은 링크 1회, AI 1회로 줄어듭니다.
@@ -77,24 +77,36 @@ npm run smoke       # 개발 서버를 켠 상태에서 가입부터 한도·차
 npm run setup
 ```
 
-질문에 차례로 답하면 됩니다. 키를 미리 넘길 수도 있습니다: `npm run setup -- --admin 내이메일@example.com --gemini 내-Gemini-키 --resend 내-Resend-키 --mail-from "레시퐁 <no-reply@내도메인.com>"` (명령줄에 넣은 키는 셸 기록에 남습니다).
+질문에 차례로 답하면 됩니다. 키를 미리 넘길 수도 있습니다: `npm run setup -- --admin 내이메일@example.com --gemini 내-Gemini-키 --mail-from "레시퐁 <내계정@gmail.com>" --gmail-app-password 앱비밀번호` (명령줄에 넣은 키는 셸 기록에 남습니다).
 
 `setup`이 하는 일은 다음과 같습니다. 다시 실행해도 이미 있는 것은 건드리지 않습니다.
 
 0. 로그인한 Cloudflare 계정을 보여 주고 이 계정에 배포할지 묻습니다. 아니라고 하면 **이 폴더에서만 쓰는 로그인**을 따로 만듭니다(`.env`의 `XDG_CONFIG_HOME`이 `.wrangler-home/`을 가리킴). 컴퓨터에 로그인된 다른 계정은 그대로 남고, 이 폴더에서 실행하는 `wrangler`만 새 계정을 씁니다. 고른 계정 ID는 `wrangler.jsonc`의 `account_id`에 적어, 다른 계정으로 로그인한 채 배포해도 엉뚱한 곳에 올라가지 않게 합니다.
 1. D1 데이터베이스와 사진용 KV를 만들고 `wrangler.jsonc`에 ID를 적습니다. 이 ID는 비밀이 아니니 커밋해 두세요(자동 배포에 필요).
 2. 빌드하고, 표를 만들고, 배포합니다. 새 계정이면 이때 `workers.dev` 하위 도메인을 정하라고 묻습니다.
-3. `AUTH_PEPPER`를 자동으로 만들고, 넘겨받은 키들을 비밀값으로 넣습니다. `--mail-from`은 `wrangler.jsonc`의 `MAIL_FROM`에 적습니다.
+3. `AUTH_PEPPER`를 자동으로 만들고, 넘겨받은 키들과 인증 메일 보내는 주소(`MAIL_FROM`)를 비밀값으로 넣습니다. 보내는 주소가 Gmail이면 앱 비밀번호를, 아니면 Resend 키를 묻습니다.
 
 그다음부터는 `npm run deploy`만 하면 됩니다.
 
-### 이메일 인증 메일 (Resend, 무료 하루 100통·월 3,000통)
+### 이메일 인증 메일
+
+두 가지 중 하나로 보냅니다. 둘 다 무료입니다.
+
+**Gmail로 보내기 (도메인 없이)**: 내 Gmail 주소로 보냅니다(하루 약 500통).
+
+1. 보낼 구글 계정에서 **2단계 인증**을 켭니다(앱 비밀번호를 만들려면 필요).
+2. https://myaccount.google.com/apppasswords 에서 앱 비밀번호(16자리)를 만듭니다.
+3. `setup`에서 보내는 주소에 `레시퐁 <내계정@gmail.com>`, 이어서 앱 비밀번호를 넣습니다. 직접 넣으려면 `npx wrangler secret put MAIL_FROM`, `npx wrangler secret put GMAIL_APP_PASSWORD`.
+
+Workers가 smtp.gmail.com:465에 암호화 연결로 붙어 보냅니다. 구글 계정 비밀번호를 바꾸면 앱 비밀번호도 풀리니 새로 만들어 넣어 주세요.
+
+**Resend로 보내기 (내 도메인이 있을 때)**: 무료 하루 100통·월 3,000통.
 
 1. https://resend.com 가입 → **Domains**에서 내 도메인을 추가하고, 안내하는 DNS 레코드를 넣습니다(도메인이 Cloudflare에 있으면 버튼 하나로 자동 설정).
 2. **API Keys**에서 키를 만듭니다(Sending access).
-3. `setup`에 `--resend 키 --mail-from "레시퐁 <no-reply@내도메인.com>"`을 넘기거나, 직접 `npx wrangler secret put RESEND_API_KEY`를 하고 `wrangler.jsonc`의 `MAIL_FROM`을 채운 뒤 배포합니다.
+3. `setup`에서 보내는 주소에 `레시퐁 <no-reply@내도메인.com>`, 이어서 Resend 키를 넣습니다.
 
-- 키와 `MAIL_FROM`이 둘 다 있어야 켜집니다. 없으면 이메일 인증 없이 가입만으로 쓸 수 있습니다(나중에 켜면, 그때까지 인증하지 않은 계정은 다음 접속 때 인증해야 합니다).
+- 보내는 주소와 앱 비밀번호(또는 Resend 키)가 둘 다 있어야 켜집니다. 둘 다 있으면 Gmail을 먼저 씁니다. 없으면 이메일 인증 없이 가입만으로 쓸 수 있습니다(나중에 켜면, 그때까지 인증하지 않은 계정은 다음 접속 때 인증해야 합니다).
 - 무료 한도를 넘지 않게 하루 90통에서 멈추고, 한 사람에게는 1분에 1통, 하루 5통까지만 보냅니다.
 - 메일이 안 가는 지인은 관리 화면의 사용자 시트에서 **인증한 것으로 처리**할 수 있습니다.
 - 로컬에서는 `.dev.vars`의 `MAIL_MOCK=1`로 메일을 보내지 않고 인증 링크를 화면에 띄웁니다.
@@ -122,7 +134,6 @@ Cloudflare 대시보드 → Workers & Pages → recipong → Settings → **Buil
 | `GROQ_MODEL`, `WORKERS_AI_MODEL`, `OPENROUTER_MODEL` | 예비 엔진 모델 |
 | `TURNSTILE_SITE_KEY` | 가입 봇 차단(선택). 비밀 키는 `TURNSTILE_SECRET`로 |
 | `INSTA_HELPER_URL` | 폰서버 인스타 도우미 주소(선택, [helper/README.md](helper/README.md)) |
-| `MAIL_FROM` | 인증 메일 보내는 주소. Resend에서 인증한 도메인이어야 합니다. 예: `레시퐁 <no-reply@example.com>` |
 | `APP_URL` | 메일 속 링크 주소(개인 도메인을 붙였을 때). 비우면 접속한 주소를 씁니다. |
 
 비밀값(`npx wrangler secret put 이름`):
@@ -131,7 +142,9 @@ Cloudflare 대시보드 → Workers & Pages → recipong → Settings → **Buil
 |---|---|---|
 | `AUTH_PEPPER` | ✔ | 비밀번호 해시용. `setup`이 만들어 줍니다. **한 번 정하면 바꾸지 마세요.** 바꾸면 모든 비밀번호가 맞지 않게 됩니다. |
 | `ADMIN_EMAILS` |  | 관리자 이메일(쉼표 구분). 이 이메일로 가입해 **인증을 마치면** 관리자가 됩니다. 없으면 첫 가입자가 관리자입니다. |
-| `RESEND_API_KEY` | 권장 | 이메일 인증·비밀번호 찾기 메일 |
+| `MAIL_FROM` | 권장 | 인증 메일 보내는 주소. 예: `레시퐁 <내계정@gmail.com>`. 저장소에 이메일이 공개되지 않게 비밀값으로 둡니다. |
+| `GMAIL_APP_PASSWORD` | 권장 | `MAIL_FROM`의 Gmail 계정 앱 비밀번호. 이메일 인증·비밀번호 찾기 메일 |
+| `RESEND_API_KEY` |  | Gmail 대신 Resend로 보낼 때(내 도메인 필요) |
 | `GEMINI_API_KEY` | 사실상 ✔ | https://aistudio.google.com/apikey |
 | `GROQ_API_KEY`, `OPENROUTER_API_KEY` |  | 예비 AI |
 | `YOUTUBE_API_KEY` | 권장 | 설명란과 영상 길이를 안정적으로 읽습니다(무료 하루 1만 건). 없으면 공개 페이지를 읽는데, 클라우드 IP에서 막히면 영상 길이를 몰라 **일반 계정은 영상 분석을 못 합니다**(설명란·자막 붙여넣기는 됨). |

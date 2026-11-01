@@ -18,13 +18,15 @@ export interface AppEnv {
   OPENROUTER_MODEL: string;
   TURNSTILE_SITE_KEY: string;
   INSTA_HELPER_URL: string;
-  /** 메일 보내는 주소. 예: 레시퐁 <no-reply@내도메인.com> (Resend에서 인증한 도메인) */
-  MAIL_FROM: string;
   /** 메일 속 링크의 주소. 비우면 요청이 들어온 주소를 쓴다 */
   APP_URL: string;
 
   /** 쉼표로 구분한 관리자 이메일 (비밀값). 비워 두면 첫 가입자가 관리자 */
   ADMIN_EMAILS?: string;
+  /** 메일 보내는 주소 (비밀값). 예: 레시퐁 <내계정@gmail.com>, 또는 Resend에서 인증한 도메인 주소 */
+  MAIL_FROM?: string;
+  /** Gmail 앱 비밀번호. MAIL_FROM의 Gmail 계정으로 보낸다 */
+  GMAIL_APP_PASSWORD?: string;
   AUTH_PEPPER?: string;
   GEMINI_API_KEY?: string;
   GROQ_API_KEY?: string;
