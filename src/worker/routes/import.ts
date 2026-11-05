@@ -8,6 +8,7 @@ import { isUsableRecipe, normalizeRecipe, type RecipeContent, type SourceType } 
 import { extractTextTask, extractVideoTask, placeFilledTip } from "../ai/prompts";
 import { runAi, videoReady } from "../ai/providers";
 import { requireVerified } from "../auth";
+import { classifyContent } from "../categorize";
 import { ApiError, readJson, type AppEnv, type HonoEnv, type SessionUser } from "../env";
 import { fetchInstagram } from "../extract/instagram";
 import { looksLikeRecipe } from "../extract/text";
@@ -41,6 +42,7 @@ interface Job {
 }
 
 // 레시피 정리 규칙(프롬프트)을 바꾸면 이 시각을 올린다. 그 전에 정리해 둔 공용 캐시는 쓰지 않고 새로 정리한다.
+// 요리 종류(categories)를 더할 때는 올리지 않았다. 종류 없는 옛 캐시는 가져갈 때 종류만 따로 정해 채운다(아래 ensureCategories).
 const CACHE_SINCE = Date.UTC(2026, 10, 1, 8, 35); // 2026-11-01 17:35 KST: 분량 추정·초보자용 단계·한국어 단위
 
 function callAi(job: Job, env: AppEnv, task: Parameters<typeof runAi>[1]) {
@@ -48,10 +50,23 @@ function callAi(job: Job, env: AppEnv, task: Parameters<typeof runAi>[1]) {
   return runAi(env, task);
 }
 
-function fromAi(data: unknown, fix: (c: RecipeContent) => RecipeContent = (c) => c): RecipeContent | null {
+/** 요리 종류를 받았는지 함께 돌려준다. 예비 엔진은 형식을 강제하지 못해 종류를 빠뜨리기도 한다. */
+function fromAi(data: unknown, fix: (c: RecipeContent) => RecipeContent = (c) => c): { content: RecipeContent; classified: boolean } | null {
   if (data && typeof data === "object" && (data as Record<string, unknown>).is_recipe === false) return null;
   const content = fix(normalizeRecipe(data));
-  return isUsableRecipe(content) ? content : null;
+  if (!isUsableRecipe(content)) return null;
+  return { content, classified: hasCategories(data) };
+}
+
+function hasCategories(raw: unknown): boolean {
+  return Boolean(raw && typeof raw === "object" && Array.isArray((raw as Record<string, unknown>).categories));
+}
+
+/** 종류를 못 받은 레시피는 저장 전에 종류만 따로 묻는다. 실패하면 '정하지 않음'으로 저장된다. */
+async function ensureCategories(env: AppEnv, result: { content: RecipeContent; classified: boolean }) {
+  if (result.classified) return result;
+  const categories = await classifyContent(env, result.content);
+  return categories ? { content: { ...result.content, categories }, classified: true } : result;
 }
 
 async function stage(send: Send, s: ImportStage, label: string) {
@@ -60,6 +75,8 @@ async function stage(send: Send, s: ImportStage, label: string) {
 
 interface Extracted {
   content: RecipeContent;
+  /** 요리 종류까지 정해졌는지 */
+  classified: boolean;
   image: string | null;
   method: string;
 }
@@ -80,8 +97,8 @@ async function extractYouTube(
   if (text && (input.caption || looksLikeRecipe(text))) {
     await stage(send, "description", input.caption ? "붙여넣은 글에서 레시피를 찾고 있어요" : "설명란에서 레시피를 찾고 있어요");
     const { data } = await callAi(job, env, extractTextTask({ sourceLabel: input.caption ? "사용자가 붙여넣은 영상 설명" : "유튜브 영상 설명란", title: meta.title, text }));
-    const content = fromAi(data);
-    if (content) return { content, image: meta.thumbnail, method: "description" };
+    const got = fromAi(data);
+    if (got) return { ...got, image: meta.thumbnail, method: "description" };
   }
 
   // 설명란에 없으면 작성자 댓글(보통 고정 댓글)을 본다. 영상 분석보다 훨씬 빠르고 영상 한도를 쓰지 않는다.
@@ -90,8 +107,8 @@ async function extractYouTube(
     if (comment) {
       await stage(send, "comment", "고정 댓글에서 레시피를 찾고 있어요");
       const { data } = await callAi(job, env, extractTextTask({ sourceLabel: "유튜브 작성자의 고정 댓글", title: meta.title, text: comment }));
-      const content = fromAi(data);
-      if (content) return { content, image: meta.thumbnail, method: "comment" };
+      const got = fromAi(data);
+      if (got) return { ...got, image: meta.thumbnail, method: "comment" };
     }
   }
 
@@ -112,9 +129,9 @@ async function extractYouTube(
   }
   await stage(send, "video", minutes > 3 ? "영상을 보면서 레시피를 정리하고 있어요. 1~2분 걸려요" : "영상을 보면서 레시피를 정리하고 있어요");
   const { data } = await callAi(job, env, extractVideoTask({ url: source.url, title: meta.title, description: meta.description }));
-  const content = fromAi(data);
-  if (!content) throw new NeedCaption("이 영상에서 레시피를 찾지 못했어요. 요리 영상이 맞다면 설명란이나 자막을 붙여넣어 주세요.");
-  return { content, image: meta.thumbnail, method: "video" };
+  const got = fromAi(data);
+  if (!got) throw new NeedCaption("이 영상에서 레시피를 찾지 못했어요. 요리 영상이 맞다면 설명란이나 자막을 붙여넣어 주세요.");
+  return { ...got, image: meta.thumbnail, method: "video" };
 }
 
 async function extractInstagram(
@@ -140,28 +157,29 @@ async function extractInstagram(
   await stage(send, "caption", "캡션에서 레시피를 찾고 있어요");
   // 캡션에 양념 분량만 있는 릴스가 많다. 영상은 볼 수 없으니 빈 곳(주재료·순서)은 흔한 방법으로 채운다.
   const { data } = await callAi(job, env, extractTextTask({ sourceLabel: "인스타그램 게시물 캡션", text: caption, fillGaps: true }));
-  const content = fromAi(data, placeFilledTip);
-  if (!content) throw new NeedCaption("캡션에서 재료나 분량을 찾지 못했어요. 레시피가 댓글이나 영상 속에 있다면 그 내용을 붙여넣어 주세요.");
+  const got = fromAi(data, placeFilledTip);
+  if (!got) throw new NeedCaption("캡션에서 재료나 분량을 찾지 못했어요. 레시피가 댓글이나 영상 속에 있다면 그 내용을 붙여넣어 주세요.");
   let image: string | null = null;
   if (remoteImage && !input.image) {
     await stage(send, "image", "사진을 저장하고 있어요");
     // 인스타 사진 주소는 며칠 뒤 만료되므로 내 저장소로 옮긴다.
     image = await copyRemoteImage(env, user.id, remoteImage);
   }
-  return { content, image, method: input.caption ? "caption-pasted" : "caption" };
+  return { ...got, image, method: input.caption ? "caption-pasted" : "caption" };
 }
 
 async function extractWeb(job: Job, env: AppEnv, source: Extract<DetectedSource, { type: "web" }>, input: ImportInput, send: Send): Promise<Extracted> {
   await stage(send, "page", "페이지를 읽고 있어요");
   const page = input.caption ? null : await fetchWebPage(source.url);
-  if (page?.recipe && isUsableRecipe(page.recipe)) return { content: page.recipe, image: page.image, method: "jsonld" };
+  // 페이지 정보(JSON-LD)로 바로 읽으면 AI를 부르지 않아서 요리 종류는 저장 전에 따로 정한다.
+  if (page?.recipe && isUsableRecipe(page.recipe)) return { content: page.recipe, classified: false, image: page.image, method: "jsonld" };
   const text = input.caption?.trim() || page?.text || "";
   if (text.length < 50) throw new NeedCaption("페이지 내용을 읽지 못했어요. 레시피 부분을 복사해 붙여넣어 주세요.");
   await stage(send, "text", "글에서 레시피를 정리하고 있어요");
   const { data } = await callAi(job, env, extractTextTask({ sourceLabel: "레시피 웹페이지", title: page?.title, text }));
-  const content = fromAi(data);
-  if (!content) throw new NeedCaption("이 페이지에서 레시피를 찾지 못했어요. 레시피 부분만 복사해 붙여넣어 주세요.");
-  return { content, image: page?.image ?? null, method: "page" };
+  const got = fromAi(data);
+  if (!got) throw new NeedCaption("이 페이지에서 레시피를 찾지 못했어요. 레시피 부분만 복사해 붙여넣어 주세요.");
+  return { ...got, image: page?.image ?? null, method: "page" };
 }
 
 async function runImport(env: AppEnv, user: SessionUser, input: ImportInput, send: Send) {
@@ -191,11 +209,20 @@ async function runImport(env: AppEnv, user: SessionUser, input: ImportInput, sen
       let image = cached.image;
       const key = keyFromImageUrl(image);
       if (key && !(await env.DB.prepare("SELECT 1 FROM images WHERE key = ?1").bind(key).first())) image = null;
-      const id = await createRecipe(env, user.id, normalizeRecipe(JSON.parse(cached.content)), {
+      const raw: unknown = JSON.parse(cached.content);
+      const got = await ensureCategories(env, { content: normalizeRecipe(raw), classified: hasCategories(raw) });
+      // 요리 종류가 생기기 전에 만든 캐시에는 이번에 정한 종류를 넣어 둔다. 다음 사람은 다시 묻지 않는다.
+      if (got.classified && !hasCategories(raw)) {
+        await env.DB.prepare("UPDATE extraction_cache SET content = json_set(content, '$.categories', json(?1)) WHERE source_key = ?2 AND json_valid(content)")
+          .bind(JSON.stringify(got.content.categories), source.key)
+          .run();
+      }
+      const id = await createRecipe(env, user.id, got.content, {
         image: userImage ?? image,
         sourceType: source.type,
         sourceUrl: source.url,
         sourceKey: source.key,
+        classified: got.classified,
       });
       await send({ type: "done", recipeId: id, cached: true });
       return;
@@ -211,9 +238,9 @@ async function runImport(env: AppEnv, user: SessionUser, input: ImportInput, sen
     if (!source) {
       await stage(send, "text", "글에서 레시피를 정리하고 있어요");
       const { data } = await callAi(job, env, extractTextTask({ sourceLabel: "사용자가 붙여넣은 글", text }));
-      const content = fromAi(data);
-      if (!content) throw new ApiError(422, "not_recipe", "레시피를 찾지 못했어요. 재료와 만드는 법이 들어 있는 글인지 확인해 주세요.");
-      result = { content, image: null, method: "text" };
+      const got = fromAi(data);
+      if (!got) throw new ApiError(422, "not_recipe", "레시피를 찾지 못했어요. 재료와 만드는 법이 들어 있는 글인지 확인해 주세요.");
+      result = { ...got, image: null, method: "text" };
       sourceType = "text";
     } else if (source.type === "youtube") {
       result = await extractYouTube(job, env, user, source, input, send);
@@ -233,22 +260,27 @@ async function runImport(env: AppEnv, user: SessionUser, input: ImportInput, sen
   }
 
   await stage(send, "save", "레시피를 저장하고 있어요");
+  result = { ...result, ...(await ensureCategories(env, result)) };
   const id = await createRecipe(env, user.id, result.content, {
     image: userImage ?? result.image,
     sourceType,
     sourceUrl: source?.url ?? null,
     sourceKey: source?.key ?? null,
+    classified: result.classified,
   });
   // 사용자가 붙여넣은 글로 만든 결과는 캐시에 넣지 않는다. 남이 아무 글이나 붙여 인기 링크의 결과를 바꿔치기할 수 있어서다.
   // 이미 있는 캐시도 덮어쓰지 않는다. 다만 정리 규칙을 바꾸기 전에 만든 낡은 결과는 새 결과로 바꾼다.
   if (source && !input.caption) {
+    // 종류를 못 정했으면 캐시에 종류 칸을 넣지 않는다. 넣으면 다음 사람에게 '기타'로 정해진 것처럼 보인다.
+    const { categories, ...withoutCategories } = result.content;
+    const cacheContent = result.classified ? result.content : withoutCategories;
     await env.DB.prepare(
       `INSERT INTO extraction_cache (source_key, content, image, source_url, method, created_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6)
        ON CONFLICT(source_key) DO UPDATE SET content = excluded.content, image = excluded.image, source_url = excluded.source_url,
          method = excluded.method, created_at = excluded.created_at
        WHERE extraction_cache.created_at < ?7`,
     )
-      .bind(source.key, JSON.stringify(result.content), result.image, source.url, result.method, Date.now(), CACHE_SINCE)
+      .bind(source.key, JSON.stringify(cacheContent), result.image, source.url, result.method, Date.now(), CACHE_SINCE)
       .run();
   }
   await send({ type: "done", recipeId: id, cached: false });

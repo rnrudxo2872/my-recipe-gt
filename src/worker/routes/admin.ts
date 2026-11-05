@@ -5,6 +5,7 @@ import type { AdminOverview, AdminUserRow, Role, UserStatus } from "../../shared
 import { kstDay } from "../../shared/time";
 import { providerStatus } from "../ai/providers";
 import { hashPassword, requireAdmin, requireVerified, toPublicUser } from "../auth";
+import { categorizePending, countUncategorized } from "../categorize";
 import { ApiError, isMock, randomId, readJson, type HonoEnv } from "../env";
 import { helperUrl } from "../insta-helper";
 import { mailMode } from "../mail";
@@ -58,8 +59,14 @@ admin.get("/overview", async (c) => {
       turnstile: Boolean(c.env.TURNSTILE_SECRET && c.env.TURNSTILE_SITE_KEY),
       mock: isMock(c.env),
     },
+    uncategorized: await countUncategorized(c.env),
   };
   return c.json(overview);
+});
+
+// 요리 종류를 아직 정하지 않은 레시피(이 기능 전에 저장한 것 등)를 AI로 한 묶음씩 정한다. 사용자 한도는 쓰지 않는다.
+admin.post("/categorize", async (c) => {
+  return c.json(await categorizePending(c.env));
 });
 
 admin.patch("/users/:id", async (c) => {

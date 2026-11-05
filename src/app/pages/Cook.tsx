@@ -1,7 +1,7 @@
 import { ArrowLeft, ArrowRight, Check, ListChecks, Pause, Play, Timer, X } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate, useParams, useSearchParams } from "react-router";
-import { amountText, detectStepMinutes, displayNote } from "../../shared/recipe";
+import { amountText, detectStepMinutes, displayNote, scaleStepText } from "../../shared/recipe";
 import { CookedSheet } from "../components/CookedSheet";
 import { TermText } from "../components/TermText";
 import { Sheet } from "../components/Sheet";
@@ -187,7 +187,7 @@ export function Cook() {
               {idx + 1} / {steps.length}
             </p>
             <p className="cook-text">
-              <TermText text={step} />
+              <TermText text={scaleStepText(step, factor)} />
             </p>
             {minutes && (
               <div className="cook-timer">

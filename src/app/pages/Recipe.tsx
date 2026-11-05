@@ -27,7 +27,18 @@ import {
 import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router";
 import type { SubstituteResult } from "../../shared/api";
-import { amountText, displayNote, formatAmount, formatQty, recipeToText, type Ingredient, type RecipeContent, type RecipeDetail, type RecipeVersion } from "../../shared/recipe";
+import {
+  amountText,
+  displayNote,
+  formatAmount,
+  formatQty,
+  recipeToText,
+  scaleStepText,
+  type Ingredient,
+  type RecipeContent,
+  type RecipeDetail,
+  type RecipeVersion,
+} from "../../shared/recipe";
 import { AddToPlanSheet } from "../components/AddToPlanSheet";
 import { CookedSheet } from "../components/CookedSheet";
 import { InstagramIcon, YouTubeIcon } from "../components/Icons";
@@ -326,7 +337,8 @@ export function RecipePage() {
                   {content.steps.map((s, i) => (
                     <li key={i}>
                       <span>
-                        <TermText text={s} />
+                        {/* 인분을 바꾸면 글 속 분량('간장 2큰술')도 재료 목록과 같이 바뀐다 */}
+                        <TermText text={scaleStepText(s, scale.factor)} />
                       </span>
                     </li>
                   ))}

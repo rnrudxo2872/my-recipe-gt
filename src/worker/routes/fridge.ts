@@ -318,7 +318,7 @@ fridge.post("/match", async (c) => {
   const body = await readJson<{ items?: unknown; staples?: boolean }>(c);
   const items = cleanNames(body.items);
   const { results } = await c.env.DB.prepare(
-    "SELECT id, title, image, source_type, favorite, time_minutes, servings, tags, created_at, updated_at, ingredient_names FROM recipes WHERE user_id = ?1",
+    "SELECT id, title, image, source_type, categories, favorite, time_minutes, servings, tags, created_at, updated_at, ingredient_names FROM recipes WHERE user_id = ?1",
   )
     .bind(c.get("user").id)
     .all<RecipeRow>();

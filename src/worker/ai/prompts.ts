@@ -1,12 +1,12 @@
 // AI에게 보내는 지시문과 응답 형식(JSON Schema)
 
-import type { RecipeContent } from "../../shared/recipe";
-import { formatAmount } from "../../shared/recipe";
+import type { Category, RecipeContent } from "../../shared/recipe";
+import { CATEGORIES, formatAmount, normalizeCategories } from "../../shared/recipe";
 
 export type AiPart = { text: string } | { video: string };
 
 export interface AiTask {
-  name: "extract" | "extract_video" | "substitute" | "tweak" | "recommend";
+  name: "extract" | "extract_video" | "substitute" | "tweak" | "recommend" | "classify";
   system: string;
   parts: AiPart[];
   schema: Record<string, unknown>;
@@ -38,14 +38,26 @@ const recipeProperties = {
 };
 const recipeRequired = ["title", "description", "servings", "time_minutes", "difficulty", "ingredients", "steps", "tips", "tags"];
 
+const categoriesSchema = { type: "array", items: { type: "string", enum: [...CATEGORIES] } };
+
+// 가져오기·추천 때는 요리 종류도 같은 요청에서 받는다(AI를 따로 부르지 않으려고). 맛 조정은 원래 종류를 그대로 둔다.
+const newRecipeProperties = { ...recipeProperties, categories: categoriesSchema };
+const newRecipeRequired = [...recipeRequired, "categories"];
+
 const recipeSchema = {
   type: "object",
-  properties: { is_recipe: { type: "boolean" }, ...recipeProperties },
-  required: ["is_recipe", ...recipeRequired],
+  properties: { is_recipe: { type: "boolean" }, ...newRecipeProperties },
+  required: ["is_recipe", ...newRecipeRequired],
 };
 
 const RECIPE_SHAPE =
-  '{"is_recipe":true,"title":"","description":"","servings":2,"time_minutes":20,"difficulty":"쉬움","ingredients":[{"name":"","qty":1,"unit":"","note":"","group":""}],"steps":[""],"tips":[""],"tags":[""]}';
+  '{"is_recipe":true,"title":"","description":"","servings":2,"time_minutes":20,"difficulty":"쉬움","ingredients":[{"name":"","qty":1,"unit":"","note":"","group":""}],"steps":[""],"tips":[""],"tags":[""],"categories":["한식"]}';
+
+const CATEGORY_RULES = `- categories: 이 요리의 종류를 ${CATEGORIES.map((c) => `"${c}"`).join(", ")} 중에서 맞는 것을 모두 골라요.
+  · 여러 개여도 돼요. 예: 프렌치토스트 → ["양식", "브런치"], 김치 파스타 → ["한식", "양식"].
+  · 떡볶이·김밥 같은 분식은 "한식", 짜장면·짬뽕·탕수육은 "중식", 초밥·우동·돈부리는 "일식"이에요.
+  · "브런치"는 토스트·샌드위치·팬케이크·오믈렛·에그베네딕트처럼 늦은 아침으로 먹는 요리, "디저트"는 케이크·쿠키·빵·푸딩·빙수·음료처럼 달콤한 간식이에요.
+  · 어디에도 맞지 않으면(쌀국수·팟타이 같은 동남아 요리, 양념장·소스만 있는 레시피 등) 빈 배열로 둬요.`;
 
 const RECIPE_RULES = `규칙:
 - 자료에 있는 내용을 우선해요. 분량이 글·말·자막·화면에 나오면 그대로 옮겨요.
@@ -92,7 +104,7 @@ export function extractTextTask(input: { sourceLabel: string; title?: string; te
   const judge = input.fillGaps ? FILL_GAPS_RULES : "- 글이 요리 레시피가 아니거나 재료·순서를 알 수 없으면 is_recipe를 false로 해요.";
   return {
     name: "extract",
-    system: `${EDITOR}\n주어진 글에서 레시피를 뽑아 이 형식으로 답해요:\n${RECIPE_SHAPE}\n${RECIPE_RULES}\n${judge}`,
+    system: `${EDITOR}\n주어진 글에서 레시피를 뽑아 이 형식으로 답해요:\n${RECIPE_SHAPE}\n${RECIPE_RULES}\n${CATEGORY_RULES}\n${judge}`,
     parts: [{ text: `${header}\n\n${input.text.slice(0, 20000)}` }],
     schema: recipeSchema,
     temperature: 0.2,
@@ -108,7 +120,7 @@ export function extractVideoTask(input: { url: string; title?: string; descripti
     .join("\n\n");
   return {
     name: "extract_video",
-    system: `${EDITOR}\n요리 영상을 보고 레시피를 이 형식으로 정리해요:\n${RECIPE_SHAPE}\n${RECIPE_RULES}\n- 화면 자막, 말, 동작에서 재료와 분량, 순서를 찾아요.\n- 요리 영상이 아니면 is_recipe를 false로 해요.`,
+    system: `${EDITOR}\n요리 영상을 보고 레시피를 이 형식으로 정리해요:\n${RECIPE_SHAPE}\n${RECIPE_RULES}\n${CATEGORY_RULES}\n- 화면 자막, 말, 동작에서 재료와 분량, 순서를 찾아요.\n- 요리 영상이 아니면 is_recipe를 false로 해요.`,
     parts: [{ video: input.url }, { text: `${context}\n\n이 영상의 레시피를 정리해 주세요.`.trim() }],
     schema: recipeSchema,
     temperature: 0.2,
@@ -199,7 +211,8 @@ export function recommendTask(pantry: string[], note: string, assumeStaples: boo
 - 실제로 맛있게 만들 수 있는 검증된 집밥 위주로 추천해요.
 - 직접 짜는 레시피라 분량을 정확한 숫자로 적어요. note에 "추정"이라고 적지 마세요.
 - steps는 4~8단계로, 손질부터 그릇에 담기까지 빠짐없이 적어요.
-${RECIPE_RULES}`,
+${RECIPE_RULES}
+${CATEGORY_RULES}`,
     parts: [{ text: `가진 재료: ${pantry.join(", ")}${note ? `\n원하는 것: ${note}` : ""}` }],
     schema: {
       type: "object",
@@ -208,11 +221,55 @@ ${RECIPE_RULES}`,
           type: "array",
           minItems: 1,
           maxItems: 3,
-          items: { type: "object", properties: recipeProperties, required: recipeRequired },
+          items: { type: "object", properties: newRecipeProperties, required: newRecipeRequired },
         },
       },
       required: ["recipes"],
     },
     temperature: 0.8,
   };
+}
+
+/** 요리 종류만 정하는 작업. 종류가 없는 예전 레시피와 AI 없이 읽은 레시피(웹페이지 정보)에 쓴다. */
+export function classifyTask(recipes: { title: string; ingredients: string[] }[]): AiTask {
+  const lines = recipes.map((r, i) => {
+    const names = r.ingredients.slice(0, 12).join(", ");
+    return `${i + 1}. ${r.title}${names ? ` (재료: ${names})` : ""}`;
+  });
+  return {
+    name: "classify",
+    system: `${EDITOR}
+번호가 붙은 레시피마다 요리 종류를 골라 이 형식으로 답해요:
+{"items":[{"n":1,"categories":["한식"]}]}
+규칙:
+- 받은 레시피 번호를 빠짐없이 n에 적어요.
+${CATEGORY_RULES}`,
+    parts: [{ text: lines.join("\n") }],
+    schema: {
+      type: "object",
+      properties: {
+        items: {
+          type: "array",
+          items: { type: "object", properties: { n: { type: "integer" }, categories: categoriesSchema }, required: ["n", "categories"] },
+        },
+      },
+      required: ["items"],
+    },
+    temperature: 0.1,
+  };
+}
+
+/** classifyTask 답을 번호(1부터) → 종류로. 보낸 개수를 벗어난 번호나 categories가 없는 줄은 버린다. */
+export function parseClassified(data: unknown, count: number): Map<number, Category[]> {
+  const out = new Map<number, Category[]>();
+  const items = data && typeof data === "object" ? (data as Record<string, unknown>).items : null;
+  if (!Array.isArray(items)) return out;
+  for (const item of items) {
+    if (!item || typeof item !== "object") continue;
+    const o = item as Record<string, unknown>;
+    const n = typeof o.n === "number" ? o.n : Number(o.n);
+    if (!Number.isInteger(n) || n < 1 || n > count || !Array.isArray(o.categories)) continue;
+    out.set(n, normalizeCategories(o.categories));
+  }
+  return out;
 }

@@ -124,4 +124,6 @@ export interface AdminOverview {
   /** 아직 가입하지 않은 이메일에 미리 정해 둔 권한 */
   grants: { email: string; role: Role; createdAt: number }[];
   providers: { mail: "gmail" | "resend" | "mock" | "off"; gemini: boolean; groq: boolean; workersAi: boolean; openrouter: boolean; youtubeApi: boolean; instaHelper: boolean; turnstile: boolean; mock: boolean };
+  /** 요리 종류를 아직 정하지 않은 레시피 수(모든 사용자) */
+  uncategorized: number;
 }

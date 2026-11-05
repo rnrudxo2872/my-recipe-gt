@@ -123,6 +123,8 @@ export const api = {
       request<{ status: "updated" | "pending"; name?: string; previous?: Role }>("POST", "/api/admin/roles", { email, role }),
     deleteGrant: (email: string) => request<{ ok: true }>("DELETE", `/api/admin/roles/${encodeURIComponent(email)}`),
     savePolicy: (policy: Policy) => request<{ policy: Policy }>("PUT", "/api/admin/policy", { policy }),
+    /** 요리 종류를 아직 정하지 않은 레시피를 AI로 한 묶음 정한다 */
+    categorize: () => request<{ done: number; left: number }>("POST", "/api/admin/categorize"),
   },
 };
 

@@ -9,12 +9,17 @@ import { requireVerified } from "../auth";
 import { ApiError, readJson, type HonoEnv } from "../env";
 import { deleteImageIfUnused, keyFromImageUrl } from "../images";
 import { assertRecipeRoom, useQuota } from "../quota";
-import { createRecipe, getOwnedRecipe, listVersions, loadDetail, saveVersion, SUMMARY_COLUMNS, toDetail, toSummary, type RecipeRow } from "../recipes-db";
+import { categoriesOf, createRecipe, getOwnedRecipe, listVersions, loadDetail, saveVersion, SUMMARY_COLUMNS, toDetail, toSummary, type RecipeRow } from "../recipes-db";
 
 export const recipes = new Hono<HonoEnv>();
 recipes.use("*", requireVerified);
 
 /** 사진 값으로 받을 수 있는 것: 내가 올린 사진(/img/..)이나 https 주소 */
+/** 보낸 레시피에 요리 종류 칸이 있는지. 예전 화면(앱에 남아 있는 옛 버전)은 이 칸 없이 보낸다. */
+function sentCategories(content: unknown): boolean {
+  return Boolean(content && typeof content === "object" && Array.isArray((content as Record<string, unknown>).categories));
+}
+
 function cleanImage(value: unknown): string | null {
   if (typeof value !== "string" || !value) return null;
   if (keyFromImageUrl(value)) return value;
@@ -39,10 +44,13 @@ recipes.post("/", async (c) => {
   }
   await useQuota(c.env, user, "save");
   const sourceType: SourceType = body.sourceType === "ai" ? "ai" : "manual";
+  // 직접 쓴 레시피는 고른 종류 그대로(안 골랐으면 기타). AI 추천인데 종류가 비어 있으면 나중에 다시 정하게 둔다.
+  const classified = sourceType === "manual" ? sentCategories(body.content) : content.categories.length > 0;
   const id = await createRecipe(c.env, user.id, content, {
     image: cleanImage(body.image),
     sourceType,
     note: sourceType === "ai" ? "AI 추천" : "직접 작성",
+    classified,
   });
   return c.json({ id });
 });
@@ -57,6 +65,7 @@ recipes.put("/:id", async (c) => {
   const row = await getOwnedRecipe(c.env, user.id, c.req.param("id"));
   const body = await readJson<{ content?: unknown; note?: string; kind?: RecipeVersion["kind"] }>(c);
   const content = normalizeRecipe(body.content);
+  if (!sentCategories(body.content)) content.categories = categoriesOf(row);
   const kind: RecipeVersion["kind"] = body.kind === "ai" || body.kind === "substitute" ? body.kind : "edit";
   const note = String(body.note ?? "").trim().slice(0, 80) || (kind === "edit" ? "직접 수정" : kind === "ai" ? "AI로 맛 조정" : "재료 바꿈");
   await useQuota(c.env, user, "save");
@@ -114,7 +123,11 @@ recipes.post("/:id/versions/:vid/restore", async (c) => {
     .first<{ content: string; note: string; created_at: number }>();
   if (!v) throw new ApiError(404, "not_found", "그 버전을 찾을 수 없어요.");
   await useQuota(c.env, user, "save");
-  await saveVersion(c.env, row, normalizeRecipe(JSON.parse(v.content)), `'${v.note}'(으)로 되돌림`.slice(0, 80), "restore");
+  const raw: unknown = JSON.parse(v.content);
+  const content = normalizeRecipe(raw);
+  // 요리 종류가 생기기 전 버전으로 되돌리면 지금 종류를 그대로 둔다.
+  if (!sentCategories(raw)) content.categories = categoriesOf(row);
+  await saveVersion(c.env, row, content, `'${v.note}'(으)로 되돌림`.slice(0, 80), "restore");
   return c.json({ recipe: await loadDetail(c.env, await getOwnedRecipe(c.env, user.id, row.id)) });
 });
 
@@ -145,7 +158,8 @@ recipes.post("/:id/tweak", async (c) => {
     .map((x) => String(x).trim().slice(0, 120))
     .filter(Boolean)
     .slice(0, 12);
-  const content = normalizeRecipe(raw);
+  // 맛을 바꿔도 요리 종류는 그대로(사용자가 고른 종류를 AI가 바꾸지 않게)
+  const content = { ...normalizeRecipe(raw), categories: categoriesOf(row) };
   if (!content.ingredients.length || !content.steps.length) throw new ApiError(502, "ai_bad_output", "AI가 레시피를 제대로 고치지 못했어요. 다시 시도해 주세요.");
   return c.json({ content, changes });
 });

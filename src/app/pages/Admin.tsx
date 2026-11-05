@@ -356,6 +356,53 @@ const LIMIT_FIELDS: { key: keyof Limits; label: string }[] = [
   { key: "recipes", label: "레시피 저장 수" },
 ];
 
+/** 요리 종류가 없는 레시피(이 기능 전에 저장한 것 등)를 AI로 한꺼번에 정한다. 40개씩 묶어 남은 게 없을 때까지 부른다. */
+function Categorize({ left }: { left: number }) {
+  const qc = useQueryClient();
+  const toast = useToast();
+  const [progress, setProgress] = useState<{ done: number; left: number } | null>(null);
+  const run = useMutation({
+    mutationFn: async () => {
+      let done = 0;
+      for (;;) {
+        const r = await api.admin.categorize();
+        done += r.done;
+        setProgress({ done, left: r.left });
+        // AI가 남은 레시피를 하나도 정하지 못하면 같은 묶음만 되풀이하므로 멈춘다.
+        if (r.left === 0 || r.done === 0) return { done, left: r.left };
+      }
+    },
+    onSuccess: (r) => {
+      qc.invalidateQueries({ queryKey: ["admin"] });
+      qc.invalidateQueries({ queryKey: ["recipes"] });
+      toast.show(r.left ? `${r.done}개를 정했어요. ${r.left}개는 AI가 정하지 못했어요. 잠시 뒤 다시 눌러 주세요.` : `레시피 ${r.done}개의 요리 종류를 정했어요.`);
+    },
+    onError: (e) => {
+      qc.invalidateQueries({ queryKey: ["admin"] });
+      toast.error(e);
+    },
+  });
+
+  return (
+    <div className="card">
+      <h2>요리 종류 정하기</h2>
+      {left === 0 && !run.isPending ? (
+        <p className="help">모든 레시피에 요리 종류가 정해져 있어요.</p>
+      ) : (
+        <>
+          <p className="help" style={{ marginBottom: 12 }}>
+            요리 종류(한식·중식·양식·일식·브런치·디저트)가 아직 없는 레시피가 {left}개 있어요. AI가 제목과 재료를 보고 한꺼번에 정해요. 40개마다
+            AI를 한 번 부르고, 사용자 한도는 쓰지 않아요.
+          </p>
+          <button type="button" className="btn btn-primary" disabled={run.isPending} onClick={() => run.mutate()}>
+            {run.isPending ? (progress ? `정하는 중… ${progress.done}개 끝, ${progress.left}개 남음` : "정하는 중…") : `${left}개 정하기`}
+          </button>
+        </>
+      )}
+    </div>
+  );
+}
+
 function Usage({ data }: { data: AdminOverview }) {
   const qc = useQueryClient();
   const toast = useToast();
@@ -449,6 +496,8 @@ function Usage({ data }: { data: AdminOverview }) {
           </p>
         )}
       </div>
+
+      <Categorize left={data.uncategorized} />
 
       <form
         className="card"

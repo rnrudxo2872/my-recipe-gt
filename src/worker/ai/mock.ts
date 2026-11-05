@@ -31,7 +31,19 @@ const KIMCHI_FRIED_RICE = {
   ],
   tips: ["김치 국물을 한두 숟가락 넣으면 색과 맛이 진해져요.", "밥은 식은 밥을 써야 질척이지 않아요."],
   tags: ["한그릇", "자취요리", "15분"],
+  categories: ["한식"],
 };
+
+/** 시험용 요리 종류: 제목의 낱말로 짐작한다. */
+function mockCategories(title: string): string[] {
+  if (/토스트|팬케이크|샌드위치|오믈렛/.test(title)) return ["양식", "브런치"];
+  if (/케이크|쿠키|푸딩|빙수|마들렌/.test(title)) return ["디저트"];
+  if (/파스타|스테이크|리조또/.test(title)) return ["양식"];
+  if (/짜장|짬뽕|마파|탕수/.test(title)) return ["중식"];
+  if (/초밥|우동|돈부리|라멘/.test(title)) return ["일식"];
+  if (/팟타이|쌀국수|양념장|소스/.test(title)) return [];
+  return ["한식"];
+}
 
 export function mockResponse(task: AiTask): unknown {
   const prompt = task.parts.map((p) => ("text" in p ? p.text : `[video ${p.video}]`)).join("\n");
@@ -40,7 +52,8 @@ export function mockResponse(task: AiTask): unknown {
     case "extract_video": {
       if (/레시피 아님|not a recipe/i.test(prompt)) return { ...KIMCHI_FRIED_RICE, is_recipe: false };
       const title = prompt.match(/제목: (.+)/)?.[1]?.trim();
-      return { ...KIMCHI_FRIED_RICE, title: title && title.length < 30 && !/http/.test(title) ? title.replace(/[#|].*$/, "").trim() : KIMCHI_FRIED_RICE.title };
+      const name = title && title.length < 30 && !/http/.test(title) ? title.replace(/[#|].*$/, "").trim() : KIMCHI_FRIED_RICE.title;
+      return { ...KIMCHI_FRIED_RICE, title: name, categories: mockCategories(name) };
     }
     case "substitute": {
       const missing = prompt.match(/집에 없는 재료: (.+)/)?.[1]?.split(",").map((s) => s.trim()) ?? [];
@@ -72,6 +85,10 @@ export function mockResponse(task: AiTask): unknown {
         ]),
         changes: [`요청 반영: ${request}`, "고춧가루 ½큰술 → 1큰술", "청양고추 1개 추가"],
       };
+    }
+    case "classify": {
+      const items = [...prompt.matchAll(/^(\d+)\. (.+?)(?: \(재료:.*\))?$/gm)].map((m) => ({ n: Number(m[1]), categories: mockCategories(m[2]) }));
+      return { items };
     }
     case "recommend": {
       return {

@@ -16,6 +16,18 @@ export interface Ingredient {
   group: string;
 }
 
+/** 홈 화면에서 나눠 보는 요리 종류. 한 레시피가 여러 종류일 수 있고, 아무 데도 안 맞으면 빈 배열(화면에서는 '기타') */
+export const CATEGORIES = ["한식", "중식", "양식", "일식", "브런치", "디저트"] as const;
+export type Category = (typeof CATEGORIES)[number];
+export const OTHER_CATEGORY_LABEL = "기타";
+
+/** 아는 종류만, 정해진 순서로, 한 번씩 */
+export function normalizeCategories(value: unknown): Category[] {
+  const list = Array.isArray(value) ? value : typeof value === "string" ? [value] : [];
+  const set = new Set(list.map((v) => (typeof v === "string" ? v.trim() : "")));
+  return CATEGORIES.filter((c) => set.has(c));
+}
+
 export interface RecipeContent {
   title: string;
   description: string;
@@ -26,6 +38,7 @@ export interface RecipeContent {
   steps: string[];
   tips: string[];
   tags: string[];
+  categories: Category[];
 }
 
 export type SourceType = "youtube" | "instagram" | "web" | "text" | "manual" | "ai";
@@ -35,6 +48,7 @@ export interface RecipeSummary {
   title: string;
   image: string | null;
   sourceType: SourceType;
+  categories: Category[];
   favorite: boolean;
   timeMinutes: number | null;
   servings: number | null;
@@ -197,6 +211,55 @@ export function isEstimated(ingredient: Pick<Ingredient, "qty" | "note">): boole
   return ingredient.qty != null && ingredient.note.split(/s*,s*/).includes("추정");
 }
 
+// 만드는 법 문장 속 분량. 시간(분)·온도(도)·크기(cm)·횟수(번)·'3등분'처럼 인분과 상관없는 숫자는 단위 목록에 없어서 건드리지 않는다.
+const STEP_NUM = String.raw`(?:\d+\s*(?:과|와|\s)\s*\d+\s*\/\s*\d+|\d+(?:\.\d+)?(?:\s*\/\s*\d+)?|\d*[½⅓⅔¼¾⅛])`;
+const STEP_UNITS = "kg|mg|g|ml|mL|L|cc|큰술|작은술|티스푼|스푼|숟가락|숟갈|컵|국자|공기|꼬집|줌|개|알|장|쪽|마리|모|봉지|봉|팩|캔|토막|덩이|통|송이|포기|단|줄기|대|방울|T|t";
+// '1컵 반'의 '반'(0.5). 뒤에 조사만 올 때다. '반으로 갈라', '반죽'의 반은 아니다.
+const STEP_HALF = String.raw`(\s*반(?=$|[^가-힣]|[을를이가은는과와도만에](?!로)|정도|쯤))?`;
+const STEP_AMOUNT = new RegExp(String.raw`(?<![\d.,/:~\-–A-Za-z])(${STEP_NUM})(?:\s*[~\-–]\s*(${STEP_NUM}))?(\s*)(${STEP_UNITS})(?![A-Za-z])${STEP_HALF}`, "g");
+// '한 숟가락', '반 모'처럼 말로 쓴 양. '한쪽'(한 편), '한 통'처럼 다른 뜻이 흔한 단위는 뺀다.
+const STEP_WORD_AMOUNT = new RegExp(
+  String.raw`(?<![가-힣])(반|한|두|세|네|다섯)\s?(큰술|작은술|숟가락|숟갈|스푼|컵|국자|공기|꼬집|줌|개|모|대|장|알|줄기|마리|봉지|송이|포기)${STEP_HALF}`,
+  "g",
+);
+
+/** 분량 바로 뒤가 이러면 인분과 상관없는 양이다: '1큰술씩', '1개당', '2장마다', '1통째', '3개월', '2단계', '네 모서리', '1대1' */
+function isFixedAmount(unit: string, after: string, perPieceStep: boolean): boolean {
+  if (/^\s*(씩|당|마다|째)/.test(after)) return true;
+  if (perPieceStep && /^\s*에/.test(after)) return true; // '만두피 1장에 소 1큰술씩'의 '1장에'
+  if (unit === "개" && after.startsWith("월")) return true;
+  if (unit === "단" && after.startsWith("계")) return true;
+  if (unit === "모" && /^(서리|양|금)/.test(after)) return true;
+  if (unit === "대" && /^\s*\d/.test(after)) return true;
+  return false;
+}
+
+/** 만드는 법 한 단계의 글 속 분량을 인분에 맞게 바꾼다. 재료 목록과 같은 방식으로 반올림한다. */
+export function scaleStepText(text: string, factor: number): string {
+  if (factor === 1 || !Number.isFinite(factor) || factor <= 0) return text;
+  const perPieceStep = text.includes("씩");
+  const scaled = (raw: string, unit: string, half = false): string | null => {
+    const qty = parseQty(raw).qty;
+    return qty == null ? null : formatQty(scaleQty(qty + (half ? 0.5 : 0), factor, unit));
+  };
+  const out = text.replace(
+    STEP_AMOUNT,
+    (match, from: string, to: string | undefined, gap: string, unit: string, half: string | undefined, offset: number, whole: string) => {
+      if (isFixedAmount(unit, whole.slice(offset + match.length), perPieceStep)) return match;
+      if (to && half) return match; // '2~3컵 반'처럼 애매한 것은 그대로
+      const a = scaled(from, unit, Boolean(half));
+      const b = to ? scaled(to, unit) : null;
+      if (a == null || (to && b == null)) return match;
+      return `${b && b !== a ? `${a}~${b}` : a}${gap}${unit}`;
+    },
+  );
+  return out.replace(STEP_WORD_AMOUNT, (match, word: string, unit: string, half: string | undefined, offset: number, whole: string) => {
+    if (isFixedAmount(unit, whole.slice(offset + match.length), perPieceStep)) return match;
+    const value = scaled(word, unit, Boolean(half));
+    return value ? `${value}${unit}` : match;
+  });
+}
+
 /** 화면에 보일 메모. '추정'은 분량 앞 '약'으로 대신 보여 주므로 뺀다. */
 export function displayNote(note: string): string {
   return note
@@ -350,6 +413,7 @@ export function normalizeRecipe(raw: unknown): RecipeContent {
     steps: stringList(r.steps, LIMITS.steps, LIMITS.step),
     tips: stringList(r.tips, LIMITS.tips, LIMITS.tip),
     tags: [...new Set(tags)],
+    categories: normalizeCategories(r.categories),
   };
 }
 

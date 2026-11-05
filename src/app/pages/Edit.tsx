@@ -2,7 +2,18 @@ import { useQueryClient } from "@tanstack/react-query";
 import { ArrowDown, ArrowUp, Camera, ImagePlus, Plus, Trash2, X } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router";
-import { DIFFICULTIES, formatQtyExact, normalizeRecipe, parseAmount, type Difficulty, type Ingredient, type RecipeContent } from "../../shared/recipe";
+import {
+  CATEGORIES,
+  DIFFICULTIES,
+  formatQtyExact,
+  normalizeRecipe,
+  OTHER_CATEGORY_LABEL,
+  parseAmount,
+  type Category,
+  type Difficulty,
+  type Ingredient,
+  type RecipeContent,
+} from "../../shared/recipe";
 import { ChipInput } from "../components/ChipInput";
 import { ApiError, api } from "../lib/api";
 import { useDocumentTitle, useRecipe } from "../lib/hooks";
@@ -57,6 +68,7 @@ interface Draft {
   steps: { key: number; text: string }[];
   tips: string;
   tags: string[];
+  categories: Category[];
   image: string | null;
 }
 
@@ -71,6 +83,7 @@ function toDraft(c: RecipeContent | null, image: string | null): Draft {
     steps: c && c.steps.length ? c.steps.map((text) => ({ key: nextKey(), text })) : [{ key: nextKey(), text: "" }],
     tips: c?.tips.join("\n") ?? "",
     tags: c?.tags ?? [],
+    categories: c?.categories ?? [],
     image,
   };
 }
@@ -86,6 +99,7 @@ function fromDraft(d: Draft): RecipeContent {
     steps: d.steps.map((s) => s.text),
     tips: d.tips.split("\n"),
     tags: d.tags,
+    categories: d.categories,
   });
 }
 
@@ -258,6 +272,29 @@ function Editor({ id, initial }: { id?: string; initial: Draft }) {
               ))}
             </select>
           </label>
+        </div>
+
+        <div className="field" role="group" aria-labelledby="category-label">
+          <span className="label" id="category-label">
+            요리 종류
+          </span>
+          <div className="chips">
+            {CATEGORIES.map((c) => {
+              const on = d.categories.includes(c);
+              return (
+                <button
+                  key={c}
+                  type="button"
+                  className="chip"
+                  aria-pressed={on}
+                  onClick={() => set("categories", on ? d.categories.filter((x) => x !== c) : [...d.categories, c])}
+                >
+                  {c}
+                </button>
+              );
+            })}
+          </div>
+          <span className="help">여러 개 골라도 돼요. 고르지 않으면 '{OTHER_CATEGORY_LABEL}'에 모여요.</span>
         </div>
 
         <section className="editor-section">

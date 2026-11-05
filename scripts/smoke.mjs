@@ -235,6 +235,25 @@ check(
 r = await member("PATCH", `/api/recipes/${recipeId}`, { favorite: true });
 check("즐겨찾기", r.data.recipe?.favorite === true, r.data);
 
+console.log("요리 종류");
+check("가져올 때 AI가 요리 종류도 정함", JSON.stringify(original.categories) === JSON.stringify(["한식"]), original.categories);
+r = await member("GET", "/api/recipes");
+check("목록에도 요리 종류", JSON.stringify(r.data.recipes.find((x) => x.id === recipeId)?.categories) === JSON.stringify(["한식"]), r.data.recipes);
+r = await member("PUT", `/api/recipes/${recipeId}`, { content: { ...original, categories: ["브런치", "양식"] }, note: "종류 바꿈" });
+check("직접 고친 종류 저장 (여러 개, 정해진 순서)", JSON.stringify(r.data.recipe?.categories) === JSON.stringify(["양식", "브런치"]) && JSON.stringify(r.data.recipe.content.categories) === JSON.stringify(["양식", "브런치"]), r.data.recipe);
+{
+  const { categories: _omit, ...oldClientContent } = original;
+  r = await member("PUT", `/api/recipes/${recipeId}`, { content: oldClientContent, note: "옛 화면에서 저장" });
+  check("종류 칸 없이 보낸 저장은 종류를 지우지 않음", JSON.stringify(r.data.recipe?.categories) === JSON.stringify(["양식", "브런치"]), r.data.recipe);
+}
+r = await member("POST", `/api/recipes/${recipeId}/tweak`, { instruction: "덜 짜게" });
+check("맛 조정해도 종류는 그대로", JSON.stringify(r.data.content?.categories) === JSON.stringify(["양식", "브런치"]), r.data.content);
+r = await member("POST", "/api/recipes", { content: { title: "만능 양념장", ingredients: [{ name: "간장" }, { name: "설탕" }], steps: ["섞어요."], categories: [] } });
+const sauceId = r.data.id;
+r = await member("GET", `/api/recipes/${sauceId}`);
+check("종류를 안 고른 직접 작성은 기타(빈 종류)", r.status === 200 && Array.isArray(r.data.recipe.categories) && r.data.recipe.categories.length === 0, r.data.recipe);
+await member("DELETE", `/api/recipes/${sauceId}`);
+
 console.log("사진");
 // 1x1 PNG
 const png = Uint8Array.from(Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==", "base64"));
@@ -384,6 +403,33 @@ if (firstIsAdmin) {
   r = await admin("PUT", "/api/admin/policy", { policy: { member: { ai: 50 } } });
   check("한도 설정 저장", r.data.policy?.member.ai === 50 && r.data.policy.member.import === 3, r.data);
   await admin("PUT", "/api/admin/policy", { policy: {} });
+
+  // 요리 종류가 생기기 전에 저장한 레시피 흉내: 종류를 비우고 관리 화면에서 한꺼번에 정한다.
+  localSql(
+    `UPDATE recipes SET categories = NULL, content = json_remove(content, '$.categories') WHERE user_id IN (SELECT id FROM users WHERE email LIKE '%-${stamp}@test.dev')`,
+  );
+  r = await admin("GET", "/api/admin/overview");
+  const pending = r.data.uncategorized;
+  check("종류 없는 레시피 수", pending > 0, r.data.uncategorized);
+  r = await admin("POST", "/api/admin/categorize");
+  check("관리자가 AI로 한꺼번에 종류 정하기", r.status === 200 && r.data.done === pending && r.data.left === 0, r.data);
+  r = await member("GET", "/api/recipes");
+  check("정한 종류가 목록에 보임", r.data.recipes.every((x) => Array.isArray(x.categories)) && r.data.recipes.some((x) => x.categories.includes("한식")), r.data.recipes);
+  r = await member("GET", `/api/recipes/${r.data.recipes[0].id}`);
+  check("정한 종류가 레시피 내용에도 들어감", JSON.stringify(r.data.recipe.content.categories) === JSON.stringify(r.data.recipe.categories), r.data.recipe);
+  r = await member("POST", "/api/admin/categorize");
+  check("일반 계정은 종류 정하기 못 씀", r.status === 403, r.data);
+
+  // 요리 종류가 생기기 전에 만든 공용 캐시 흉내: 다시 가져갈 때 종류만 따로 정하고 캐시에도 넣어 둔다.
+  localSql("UPDATE extraction_cache SET content = json_remove(content, '$.categories')");
+  r = await admin("POST", "/api/import", { link: "https://youtu.be/dQw4w9WgXcQ" });
+  const oldCacheDone = Array.isArray(r.data) && r.data.find((e) => e.type === "done" && e.cached);
+  check("종류 없는 옛 캐시로 가져오기", Boolean(oldCacheDone), r.data);
+  if (oldCacheDone) {
+    r = await admin("GET", `/api/recipes/${oldCacheDone.recipeId}`);
+    check("옛 캐시로 가져와도 종류가 정해짐", r.data.recipe?.categories.length > 0, r.data.recipe?.categories);
+    await admin("DELETE", `/api/recipes/${oldCacheDone.recipeId}`);
+  }
 }
 
 console.log("비밀번호 찾기");

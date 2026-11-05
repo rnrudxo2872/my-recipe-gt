@@ -1,19 +1,20 @@
 import { Clock, Heart, Link2, Search } from "lucide-react";
 import { useMemo, useState } from "react";
 import { Link, useSearchParams } from "react-router";
-import type { RecipeSummary, SourceType } from "../../shared/recipe";
+import { CATEGORIES, OTHER_CATEGORY_LABEL, type Category, type RecipeSummary, type SourceType } from "../../shared/recipe";
 import { SOURCE_LABEL, SourceIcon } from "../components/Icons";
 import { RecipeImage } from "../components/RecipeImage";
 import { useDocumentTitle, useRecipes } from "../lib/hooks";
 
+// 주소(?filter=)에 쓰는 이름
+const CATEGORY_KEY: Record<Category, string> = { 한식: "korean", 중식: "chinese", 양식: "western", 일식: "japanese", 브런치: "brunch", 디저트: "dessert" };
+
+// 요리 종류로 나눠 본다. 한 레시피가 여러 종류면 그 칸마다 보이고, 아무 종류도 없으면 '기타'에 모인다.
 const FILTERS: { key: string; label: string; match: (r: RecipeSummary) => boolean }[] = [
   { key: "all", label: "전체", match: () => true },
   { key: "fav", label: "즐겨찾기", match: (r) => r.favorite },
-  { key: "youtube", label: "유튜브", match: (r) => r.sourceType === "youtube" },
-  { key: "instagram", label: "인스타", match: (r) => r.sourceType === "instagram" },
-  { key: "mine", label: "직접 작성", match: (r) => r.sourceType === "manual" || r.sourceType === "text" },
-  { key: "ai", label: "AI 추천", match: (r) => r.sourceType === "ai" },
-  { key: "web", label: "웹", match: (r) => r.sourceType === "web" },
+  ...CATEGORIES.map((c) => ({ key: CATEGORY_KEY[c], label: c, match: (r: RecipeSummary) => r.categories.includes(c) })),
+  { key: "etc", label: OTHER_CATEGORY_LABEL, match: (r) => r.categories.length === 0 },
 ];
 
 export function RecipeCard({ recipe }: { recipe: RecipeSummary }) {
@@ -55,7 +56,7 @@ export function Home() {
   const filterKey = params.get("filter") ?? "all";
   const filter = FILTERS.find((f) => f.key === filterKey) ?? FILTERS[0];
 
-  // 저장한 레시피에 있는 종류만 필터로 보여 준다.
+  // 저장한 레시피에 있는 요리 종류만 필터로 보여 준다.
   const visibleFilters = useMemo(() => FILTERS.filter((f) => f.key === "all" || f.key === filterKey || data?.some(f.match)), [data, filterKey]);
 
   const list = useMemo(() => {
@@ -112,7 +113,7 @@ export function Home() {
               <input className="input" type="search" placeholder="요리 이름이나 태그로 찾기" value={query} onChange={(e) => setQuery(e.target.value)} />
             </label>
             {visibleFilters.length > 1 && (
-              <div className="chips is-scroll" role="group" aria-label="레시피 종류">
+              <div className="chips is-scroll" role="group" aria-label="요리 종류">
                 {visibleFilters.map((f) => (
                   <button
                     key={f.key}
